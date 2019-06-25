@@ -1,0 +1,24 @@
+{
+  "linters": {
+    "spelling": {
+      "type": "spelling",
+      "exclude": "(^third_party)"
+    },
+    "chmod": {
+      "type": "chmod"
+    },
+    "merge-conflict": {
+      "type": "merge-conflict"
+    },
+    "go": {
+      "type": "golint",
+      "include": "(\\.go$)",
+      "exclude": "(^third_party|^kythe/proto/|/testdata/)"
+    },
+    "custom": {
+      "type": "script-and-regex",
+      "script-and-regex.script": "tools/arc/linter.sh",
+      "script-and-regex.regex": "/^((?P<name>.+?)::)?(?P<severity>warning|error|advice):(?P<line>\\d+)? (?P<message>.*)$/m"
+    }
+  }
+}

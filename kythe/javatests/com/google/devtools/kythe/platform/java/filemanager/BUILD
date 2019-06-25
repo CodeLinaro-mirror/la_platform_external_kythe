@@ -1,0 +1,15 @@
+package(default_visibility = ["//kythe:default_visibility"])
+
+java_test(
+    name = "compilation_unit_file_tree_test",
+    size = "small",
+    srcs = ["CompilationUnitFileTreeTest.java"],
+    test_class = "com.google.devtools.kythe.platform.java.filemanager.CompilationUnitFileTreeTest",
+    deps = [
+        "//kythe/java/com/google/devtools/kythe/platform/java/filemanager",
+        "//kythe/proto:analysis_java_proto",
+        "//third_party/guava",
+        "//third_party/truth",
+        "@junit_junit//jar",
+    ],
+)
