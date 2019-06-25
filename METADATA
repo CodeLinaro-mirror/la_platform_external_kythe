@@ -1,0 +1,17 @@
+name: "kythe"
+description:
+    "A pluggable, (mostly) language-agnostic ecosystem for building tools that "
+    "work with code"
+
+third_party {
+  url {
+    type: HOMEPAGE
+    value: "https://kythe.io/"
+  }
+  url {
+    type: GIT
+    value: "https://github.googlesource.com/kythe/kythe"
+  }
+  version: "6a03e4226a4679a38b248770a5de306b91cb8b6d"
+  last_upgrade_date { year: 2019 month: 06 day: 24 }
+}
