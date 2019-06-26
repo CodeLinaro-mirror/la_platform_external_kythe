@@ -16,15 +16,15 @@
 
 package com.google.devtools.kythe.extractors.java;
 
-import com.google.common.flogger.FluentLogger;
-import com.google.devtools.kythe.platform.shared.Metadata;
 import com.sun.tools.javac.code.Symbol.ClassSymbol;
 import com.sun.tools.javac.code.Symbol.TypeSymbol;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Set;
-import javax.annotation.Generated;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.annotation.processing.AbstractProcessor;
+import javax.annotation.processing.Generated;
 import javax.annotation.processing.RoundEnvironment;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.lang.model.SourceVersion;
@@ -43,7 +43,11 @@ import javax.tools.StandardLocation;
 @SupportedAnnotationTypes(value = {"*"})
 public class ProcessAnnotation extends AbstractProcessor {
 
-  private static final FluentLogger logger = FluentLogger.forEnclosingClass();
+  private static final Logger logger = Logger.getLogger(ProcessAnnotation.class.getName());
+
+  // ANDROID_BUILD: This line has been copied from ../../platform/shared/Metadata.java to avoid
+  // compiling that file and all its dependencies when building javac_extractor for Android.
+  private static final String ANNOTATION_COMMENT_PREFIX = "annotations:";
 
   UsageAsInputReportingFileManager fileManager;
 
@@ -78,18 +82,17 @@ public class ProcessAnnotation extends AbstractProcessor {
       } catch (IOException ex) {
         // We only log any IO exception here and do not cancel the whole processing because of an
         // exception in this stage.
-        logger.atSevere().withCause(ex).log("Error in annotation processing");
+        logger.log(Level.SEVERE, "Error in annotation processing", ex);
       }
     }
     for (Element ae : roundEnv.getElementsAnnotatedWith(Generated.class)) {
       Generated generated = ae.getAnnotation(Generated.class);
       if (generated == null
           || generated.comments() == null
-          || !generated.comments().startsWith(Metadata.ANNOTATION_COMMENT_PREFIX)) {
+          || !generated.comments().startsWith(ANNOTATION_COMMENT_PREFIX)) {
         continue;
       }
-      String annotationFile =
-          generated.comments().substring(Metadata.ANNOTATION_COMMENT_PREFIX.length());
+      String annotationFile = generated.comments().substring(ANNOTATION_COMMENT_PREFIX.length());
       if (ae instanceof ClassSymbol) {
         ClassSymbol cs = (ClassSymbol) ae;
         try {
@@ -99,7 +102,7 @@ public class ProcessAnnotation extends AbstractProcessor {
             ((UsageAsInputReportingJavaFileObject) file).markUsed();
           }
         } catch (IllegalArgumentException ex) {
-          logger.atWarning().withCause(ex).log("Bad annotationFile: %s", annotationFile);
+          logger.log(Level.WARNING, "Bad annotationFile: " + annotationFile, ex);
         }
       }
     }

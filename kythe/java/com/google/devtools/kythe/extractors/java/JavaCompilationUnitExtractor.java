@@ -29,7 +29,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Multimap;
-import com.google.common.flogger.FluentLogger;
 import com.google.common.io.ByteStreams;
 import com.google.devtools.kythe.extractors.shared.CompilationDescription;
 import com.google.devtools.kythe.extractors.shared.ExtractionException;
@@ -83,6 +82,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.annotation.processing.Processor;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
@@ -107,7 +108,8 @@ public class JavaCompilationUnitExtractor {
   public static final String JAVA_DETAILS_URL = "kythe.io/proto/kythe.proto.JavaDetails";
   public static final String BUILD_DETAILS_URL = "kythe.io/proto/kythe.proto.BuildDetails";
 
-  private static final FluentLogger logger = FluentLogger.forEnclosingClass();
+  private static final Logger logger =
+      Logger.getLogger(JavaCompilationUnitExtractor.class.getName());
 
   private static final String JDK_MODULE_PREFIX = "/modules/java.";
   private static final String MODULE_INFO_NAME = "module-info";
@@ -131,7 +133,7 @@ public class JavaCompilationUnitExtractor {
           .invoke(thisModule, JavaCompiler.class);
       loader = (ClassLoader) thisModule.getClass().getMethod("getClassLoader").invoke(thisModule);
     } catch (ReflectiveOperationException e) {
-      logger.atInfo().log("Running on non-modular JDK, fallback compiler unavailable.");
+      logger.info("Running on non-modular JDK, fallback compiler unavailable.");
     }
     moduleClassLoader = loader;
   }
@@ -574,7 +576,7 @@ public class JavaCompilationUnitExtractor {
         }
         byte[] data = ByteStreams.toByteArray(stream);
         if (data.length == 0) {
-          logger.atWarning().log("Empty java source file: %s", strippedPath);
+          logger.warning(String.format("Empty java source file: %s", strippedPath));
         }
         results.fileContents.put(strippedPath, data);
         results.relativePaths.put(strippedPath, relativePath);
@@ -785,8 +787,7 @@ public class JavaCompilationUnitExtractor {
         for (Diagnostic<? extends JavaFileObject> diagnostic :
             diagnosticsCollector.getDiagnostics()) {
           if (diagnostic.getKind() == Diagnostic.Kind.ERROR) {
-            logger.atSevere().log(
-                "Fatal error in compiler: %s", diagnostic.getMessage(Locale.ENGLISH));
+            logger.severe("Fatal error in compiler: " + diagnostic.getMessage(Locale.ENGLISH));
           }
         }
         throw new ExtractionException("Fatal error while running javac compiler.", e, false);
@@ -798,11 +799,14 @@ public class JavaCompilationUnitExtractor {
         if (diag.getKind() == Diagnostic.Kind.ERROR) {
           results.hasErrors = true;
           if (diag.getSource() != null) {
-            logger.atSevere().log(
-                "compiler error: %s(%d): %s",
-                diag.getSource().getName(), diag.getLineNumber(), diag.getMessage(Locale.ENGLISH));
+            logger.severe(
+                String.format(
+                    "compiler error: %s(%d): %s",
+                    diag.getSource().getName(),
+                    diag.getLineNumber(),
+                    diag.getMessage(Locale.ENGLISH)));
           } else {
-            logger.atSevere().log("compiler error: %s", diag.getMessage(Locale.ENGLISH));
+            logger.severe("compiler error: " + diag.getMessage(Locale.ENGLISH));
           }
         }
       }
@@ -826,7 +830,7 @@ public class JavaCompilationUnitExtractor {
       try {
         DeleteRecursively.delete(tempDir);
       } catch (IOException ioe) {
-        logger.atSevere().withCause(ioe).log("Failed to delete temporary directory %s", tempDir);
+        logger.log(Level.SEVERE, "Failed to delete temporary directory " + tempDir, ioe);
       }
     }
 
@@ -926,7 +930,9 @@ public class JavaCompilationUnitExtractor {
         ModifiableOptions.of(rawOptions)
             .removeUnsupportedOptions()
             .ensureEncodingSet(StandardCharsets.UTF_8);
-
+    // Android always uses this option.
+    // TODO(asmundak): needs more work before contributing upstream.
+    completeOptions.add("-XDstringConcat=inline");
     setLocation(
         completeOptions, standardFileManager, classpath, "-cp", StandardLocation.CLASS_PATH);
     setLocation(
@@ -963,7 +969,7 @@ public class JavaCompilationUnitExtractor {
       // Notably, when using modules the system compiler is inhibited and the actual compiler
       // resides in jdk.compiler.iterim.  Rather than hard-code this, just fall back to the first
       // JavaCompiler we can find.
-      logger.atWarning().log("Unable to find system compiler, using first available.");
+      logger.warning("Unable to find system compiler, using first available.");
       for (JavaCompiler found : ServiceLoader.load(JavaCompiler.class, moduleClassLoader)) {
         return found;
       }
@@ -979,8 +985,8 @@ public class JavaCompilationUnitExtractor {
         String path = sym.sourcefile.toUri().getPath();
         if (path != null) {
           String basename = Paths.get(path).getFileName().toString();
-          if (!basename.endsWith(".java")) {
-            logger.atWarning().log("Invalid sourcefile name: '%s'", basename);
+          if (!basename.endsWith(".java") && !basename.endsWith(".kt")) {
+            logger.warning(String.format("Invalid sourcefile name: '%s'", basename));
           }
           sourceBaseNames.put(sym.classfile.toUri(), basename);
         }

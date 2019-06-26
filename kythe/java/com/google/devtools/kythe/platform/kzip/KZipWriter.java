@@ -15,7 +15,6 @@
  */
 package com.google.devtools.kythe.platform.kzip;
 
-import com.google.common.flogger.FluentLogger;
 import com.google.devtools.kythe.proto.Analysis;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -24,12 +23,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /** Write a kzip file. */
 public final class KZipWriter implements KZip.Writer {
-  private static final FluentLogger logger = FluentLogger.forEnclosingClass();
+  private static final Logger logger = Logger.getLogger(KZipWriter.class.getName());
 
   private static final String ROOT_PREFIX = "root/";
   private final ZipOutputStream output;
@@ -97,7 +97,7 @@ public final class KZipWriter implements KZip.Writer {
       output.write(data);
       output.closeEntry();
     } else {
-      logger.atWarning().log("Warning: Already wrote %s to kzip.", path);
+      logger.warning(String.format("Warning: Already wrote %s to kzip.", path));
     }
   }
 

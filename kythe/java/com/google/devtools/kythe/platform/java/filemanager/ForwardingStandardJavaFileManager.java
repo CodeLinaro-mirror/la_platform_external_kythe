@@ -16,7 +16,6 @@
 package com.google.devtools.kythe.platform.java.filemanager;
 
 import com.google.common.base.Throwables;
-import com.google.common.flogger.FluentLogger;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -25,6 +24,8 @@ import java.nio.file.Path;
 import java.util.Collection;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.tools.FileObject;
 import javax.tools.ForwardingJavaFileManager;
 import javax.tools.JavaFileObject;
@@ -38,7 +39,8 @@ import javax.tools.StandardJavaFileManager;
 public class ForwardingStandardJavaFileManager
     extends ForwardingJavaFileManager<StandardJavaFileManager> implements StandardJavaFileManager {
 
-  private static final FluentLogger logger = FluentLogger.forEnclosingClass();
+  private static final Logger logger =
+      Logger.getLogger(ForwardingStandardJavaFileManager.class.getName());
 
   // TODO(shahms): Remove these when we've moved to JDK9 and can invoke the methods directly.
   //  Until then, cache the lookup of these extended StandardJavaFileManager methods.
@@ -242,7 +244,7 @@ public class ForwardingStandardJavaFileManager
     try {
       return StandardJavaFileManager.class.getMethod(name, parameterTypes);
     } catch (NoSuchMethodException e) {
-      logger.atInfo().withCause(e).log("Failed to find extended StandardJavaFileManager method");
+      logger.log(Level.WARNING, "Failed to find extended StandardJavaFileManager method", e);
     }
     return null;
   }

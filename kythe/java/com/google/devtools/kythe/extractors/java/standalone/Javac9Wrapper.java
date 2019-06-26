@@ -68,8 +68,11 @@ public class Javac9Wrapper extends AbstractJavacWrapper {
 
     EnumSet<Option> claimed =
         EnumSet.of(
-            Option.CLASS_PATH, Option.SOURCE_PATH,
-            Option.PROCESSOR_PATH, Option.PROCESSOR);
+            Option.CLASS_PATH,
+            Option.SOURCE_PATH,
+            Option.PROCESSOR_PATH,
+            Option.PROCESSOR,
+            Option.A);
 
     List<String> completeOptions = new ArrayList<>();
     if (options.isSet(Option.RELEASE)) {
@@ -95,6 +98,17 @@ public class Javac9Wrapper extends AbstractJavacWrapper {
             }
           }
         }
+      }
+    }
+
+    /* Special processing for -Ax=y options. Arguments.init immediately processes them
+     * into x=>y pairs that cannot be easily retrieved. This may be an indication that
+     * we are processing the command line arguments in a wrong way (that is, after parsing
+     * them we reconstruct the strings and pass them as completeOptions).
+     */
+    for (String arg : arguments) {
+      if (arg.startsWith("-A")) {
+        completeOptions.add(arg);
       }
     }
 
