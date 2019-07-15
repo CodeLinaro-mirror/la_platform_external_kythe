@@ -17,7 +17,6 @@
 #include "index_pack.h"
 
 #include <openssl/sha.h>
-#include <uuid/uuid.h>
 
 #include <utility>
 
@@ -36,7 +35,6 @@ const char IndexPackFilesystem::kDataDirectoryName[] = "files";
 const char IndexPackFilesystem::kCompilationUnitDirectoryName[] = "units";
 const char IndexPackFilesystem::kFileDataSuffix[] = ".data";
 const char IndexPackFilesystem::kCompilationUnitSuffix[] = ".unit";
-const char IndexPackFilesystem::kTempFileSuffix[] = ".new";
 
 std::unique_ptr<IndexPackPosixFilesystem> IndexPackPosixFilesystem::Open(
     const std::string& root_path, IndexPackFilesystem::OpenMode open_mode,
@@ -107,32 +105,6 @@ std::string IndexPackPosixFilesystem::GenerateFilenameFor(
   return temp_path.str();
 }
 
-/// \brief Represents a single UUID, generated during construction.
-class Uuid {
- public:
-  Uuid() {
-    uuid_t uuid;
-    uuid_generate_random(uuid);
-    // "The uuid_unparse function converts the supplied UUID uu from the binary
-    // representation into a 36-byte string (plus tailing '\0')"
-    char uuid_buffer[37];
-    uuid_unparse_lower(uuid, uuid_buffer);
-    payload_ = uuid_buffer;
-  }
-
-  /// \brief Returns a UUID (if ok()) or an error string (if !ok()).
-  const std::string& payload() { return payload_; }
-
-  /// \brief Checks whether the uuid generated correctly.
-  bool ok() { return ok_; }
-
- private:
-  /// Error text (if !ok_) or a UUID string (if ok_).
-  std::string payload_;
-  /// Determines whether UUID generation was successful.
-  bool ok_ = true;
-};
-
 /// \brief Opens a new file with a unique name in some directory.
 /// \param abs_root_directory The absolute path to the directory.
 /// \param fd_out Will be set to the fd of the open file.
@@ -142,28 +114,14 @@ class Uuid {
 static bool OpenUniqueTempFileIn(const std::string& abs_root_directory,
                                  int* fd_out, std::string* path_out,
                                  std::string* error_text) {
-  for (;;) {
-    Uuid new_uuid;
-    if (!new_uuid.ok()) {
-      *error_text = new_uuid.payload();
-      return false;
-    }
-    llvm::SmallString<256> path(abs_root_directory);
-    llvm::sys::path::append(
-        path, new_uuid.payload() + IndexPackFilesystem::kTempFileSuffix);
-    if (auto err = llvm::sys::fs::openFileForWrite(
-            llvm::Twine(path), *fd_out, llvm::sys::fs::CD_CreateNew,
-            llvm::sys::fs::OF_None,
-            llvm::sys::fs::all_read | llvm::sys::fs::all_write)) {
-      if (err != std::errc::file_exists) {
-        *error_text = err.message();
-        return false;
-      }
-    } else {
-      *path_out = path.str();
-      return true;
-    }
+  llvm::SmallString<256> path(abs_root_directory);
+  llvm::sys::path::append(path,  "%%%%%%%%%%%%%%%%.tmp");
+  if (auto err = llvm::sys::fs::createUniqueFile(path, *fd_out, path)) {
+    *error_text = err.message();
+    return false;
   }
+  *path_out = path.str();
+  return true;
 }
 
 bool IndexPackPosixFilesystem::ReadFileContent(DataKind data_kind,

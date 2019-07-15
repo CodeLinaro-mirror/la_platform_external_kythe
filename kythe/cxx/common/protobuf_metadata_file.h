@@ -18,6 +18,8 @@
 #define KYTHE_CXX_COMMON_PROTOBUF_METADATA_FILE_H_
 
 #include <memory>
+// ANDROID_BUILD: need <sstream> for std::stringstream
+#include <sstream>
 
 #include "glog/logging.h"
 #include "google/protobuf/descriptor.pb.h"

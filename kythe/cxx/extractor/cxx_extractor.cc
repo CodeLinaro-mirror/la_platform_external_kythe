@@ -33,6 +33,8 @@
 #include "absl/strings/string_view.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendAction.h"
+// ANDROID_BUILD
+#include "clang/Lex/LexDiagnostic.h"
 #include "clang/Lex/MacroArgs.h"
 #include "clang/Lex/PPCallbacks.h"
 #include "clang/Lex/Preprocessor.h"
@@ -41,7 +43,8 @@
 #include "glog/logging.h"
 #include "kythe/cxx/common/file_utils.h"
 #include "kythe/cxx/common/json_proto.h"
-#include "kythe/cxx/common/kzip_writer.h"
+// ANDROID_BUILD
+#include "kythe/cxx/common/kzip_writer_aosp.h"
 #include "kythe/cxx/common/path_utils.h"
 #include "kythe/cxx/extractor/CommandLineUtils.h"
 #include "kythe/cxx/extractor/language.h"
@@ -434,10 +437,9 @@ ExtractorPPCallbacks::ExtractorPPCallbacks(ExtractorState state)
     ClaimPragmaHandlerWrapper(ExtractorPPCallbacks* context)
         : PragmaHandler("kythe_claim"), context_(context) {}
     void HandlePragma(clang::Preprocessor& preprocessor,
-                      clang::PragmaIntroducer introducer,
+                      clang::PragmaIntroducerKind introducer,
                       clang::Token& first_token) override {
-      context_->HandleKytheClaimPragma(preprocessor, introducer.Kind,
-                                       first_token);
+      context_->HandleKytheClaimPragma(preprocessor, introducer, first_token);
     }
 
    private:
@@ -451,9 +453,9 @@ ExtractorPPCallbacks::ExtractorPPCallbacks(ExtractorState state)
     MetadataPragmaHandlerWrapper(ExtractorPPCallbacks* context)
         : PragmaHandler("kythe_metadata"), context_(context) {}
     void HandlePragma(clang::Preprocessor& preprocessor,
-                      clang::PragmaIntroducer introducer,
+                      clang::PragmaIntroducerKind introducer,
                       clang::Token& first_token) override {
-      context_->HandleKytheMetadataPragma(preprocessor, introducer.Kind,
+      context_->HandleKytheMetadataPragma(preprocessor, introducer,
                                           first_token);
     }
 
@@ -855,6 +857,11 @@ class ExtractorAction : public clang::PreprocessorFrontendAction {
         << "Expected to see only one TU; instead saw " << inputs.size() << ".";
     main_source_file_ = inputs[0].getFile();
     auto* preprocessor = &getCompilerInstance().getPreprocessor();
+    // ANDROID_BUILD:
+    // TODO: find a better way to ignore unknown pragmas
+    preprocessor->getDiagnostics().setSeverity(
+        clang::diag::warn_pragma_ignored, clang::diag::Severity::Ignored,
+        clang::SourceLocation());
     preprocessor->addPPCallbacks(
         llvm::make_unique<ExtractorPPCallbacks>(ExtractorState{
             index_writer_, &getCompilerInstance().getSourceManager(),
@@ -1129,7 +1136,8 @@ void CompilationWriter::WriteIndex(
     build_details.set_rule_type(rule_type_);
     build_details.set_build_config(build_config_);
     // Include the details, but only if any of the fields are meaningfully set.
-    if (build_details.ByteSizeLong() > 0) {
+    // ANDROID_BUILD: only ByteSize() is available
+    if (build_details.ByteSize() > 0) {
       PackAny(build_details, kBuildDetailsURI, unit.add_details());
     }
   }
