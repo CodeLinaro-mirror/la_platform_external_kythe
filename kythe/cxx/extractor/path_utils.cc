@@ -32,9 +32,6 @@ const clang::FileEntry* LookupFileForIncludePragma(
     llvm::SmallVectorImpl<char>* relative_path,
     llvm::SmallVectorImpl<char>* result_filename) {
   clang::Token filename_token;
-// ANDROID_BUILD: the new version is currently off because Android's
-// Clang toolchain hasn't reached r356433.
-#if 0
   if (preprocessor->LexHeaderName(filename_token)) {
     return nullptr;
   }
@@ -45,30 +42,6 @@ const clang::FileEntry* LookupFileForIncludePragma(
   llvm::SmallString<128> filename_buffer;
   llvm::StringRef filename =
       preprocessor->getSpelling(filename_token, filename_buffer);
-#else
-  llvm::SmallString<128> filename_buffer;
-  clang::SourceLocation filename_end;
-  llvm::StringRef filename;
-  preprocessor->getCurrentLexer()->LexIncludeFilename(filename_token);
-  switch (filename_token.getKind()) {
-    case clang::tok::eod:
-      return nullptr;
-    case clang::tok::angle_string_literal:
-    case clang::tok::string_literal:
-      filename = preprocessor->getSpelling(filename_token, filename_buffer);
-      break;
-    case clang::tok::less:
-      filename_buffer.push_back('<');
-      if (preprocessor->ConcatenateIncludeName(filename_buffer, filename_end))
-        return nullptr;
-      filename = filename_buffer;
-      break;
-    default:
-      preprocessor->DiscardUntilEndOfDirective();
-      fprintf(stderr, "Bad include-style pragma.\n");
-      return nullptr;
-  }
-#endif
   bool is_angled = preprocessor->GetIncludeFilenameSpelling(
       filename_token.getLocation(), filename);
   if (filename.empty()) {

@@ -437,9 +437,10 @@ ExtractorPPCallbacks::ExtractorPPCallbacks(ExtractorState state)
     ClaimPragmaHandlerWrapper(ExtractorPPCallbacks* context)
         : PragmaHandler("kythe_claim"), context_(context) {}
     void HandlePragma(clang::Preprocessor& preprocessor,
-                      clang::PragmaIntroducerKind introducer,
+                      clang::PragmaIntroducer introducer,
                       clang::Token& first_token) override {
-      context_->HandleKytheClaimPragma(preprocessor, introducer, first_token);
+      context_->HandleKytheClaimPragma(preprocessor, introducer.Kind,
+                                       first_token);
     }
 
    private:
@@ -453,9 +454,9 @@ ExtractorPPCallbacks::ExtractorPPCallbacks(ExtractorState state)
     MetadataPragmaHandlerWrapper(ExtractorPPCallbacks* context)
         : PragmaHandler("kythe_metadata"), context_(context) {}
     void HandlePragma(clang::Preprocessor& preprocessor,
-                      clang::PragmaIntroducerKind introducer,
+                      clang::PragmaIntroducer introducer,
                       clang::Token& first_token) override {
-      context_->HandleKytheMetadataPragma(preprocessor, introducer,
+      context_->HandleKytheMetadataPragma(preprocessor, introducer.Kind,
                                           first_token);
     }
 
