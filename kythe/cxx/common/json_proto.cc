@@ -88,7 +88,7 @@ Status WriteMessageAsJsonToStringInternal(
   auto resolver =
       MakeTypeResolverForPool(message.GetDescriptor()->file()->pool());
 
-  google::protobuf::util::JsonOptions options;
+  google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
 
   auto status = google::protobuf::util::BinaryToJsonString(
@@ -171,10 +171,12 @@ bool MergeJsonWithMessage(const std::string& in, std::string* format_key,
     auto resolver =
         MakeTypeResolverForPool(message->GetDescriptor()->file()->pool());
 
-// ANDROID_BUILD: our protobuf code is old
-// and lacks google::protobuf::util::JsonOptions.case_insensitive_enum_parsing
+    google::protobuf::util::JsonParseOptions options;
+    options.case_insensitive_enum_parsing = false;
     auto status = google::protobuf::util::JsonToBinaryString(
-        resolver.get(), message->GetDescriptor()->full_name(), content, &binary);
+        resolver.get(), message->GetDescriptor()->full_name(), content, &binary,
+        options);
+
     if (!status.ok()) {
       LOG(ERROR) << status.ToString() << ": " << content;
       return false;
@@ -191,10 +193,12 @@ Status ParseFromJsonStream(google::protobuf::io::ZeroCopyInputStream* input,
 
   std::string binary;
   google::protobuf::io::StringOutputStream output(&binary);
-  // ANDROID_BUILD: our protobuf code is old
-  // and lacks google::protobuf::util::JsonOptions.case_insensitive_enum_parsing
+  google::protobuf::util::JsonParseOptions options;
+  options.case_insensitive_enum_parsing = false;
   auto status = google::protobuf::util::JsonToBinaryStream(
-      resolver.get(), message->GetDescriptor()->full_name(), input, &output);
+      resolver.get(), message->GetDescriptor()->full_name(), input, &output,
+      options);
+
   if (!status.ok()) {
     return Status(static_cast<StatusCode>(status.error_code()),
                   std::string(status.error_message()));
