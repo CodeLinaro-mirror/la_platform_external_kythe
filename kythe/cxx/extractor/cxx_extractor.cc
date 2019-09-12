@@ -1374,7 +1374,7 @@ bool ExtractorConfiguration::Extract(
                                  transcript, source_files, header_search_info,
                                  had_errors, file_system_options_.WorkingDir);
       });
-  clang::tooling::ToolInvocation invocation(final_args_, std::move(extractor),
+  clang::tooling::ToolInvocation invocation(final_args_, extractor.release(),
                                             file_manager.get());
   if (map_builtin_resources_) {
     MapCompilerResources(&invocation, kBuiltinResourceDirectory);
