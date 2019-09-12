@@ -277,10 +277,9 @@ def _add_public_tablegen_target(ctx, name):
         include = paths.dirname(out)
         if include not in includes and "include" in include:
             includes.append(include)
-    textual_hdrs = ctx._config.target_defaults.get(name, {}).get("textual_hdrs", [])
     native.cc_library(
         name = name,
-        textual_hdrs = table_outs + textual_hdrs,
+        textual_hdrs = _current(ctx).table_outs + ctx._config.target_defaults.get(name, {}).get("textual_hdrs", []),
         includes = includes,
     )
 
