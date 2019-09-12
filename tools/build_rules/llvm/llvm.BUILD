@@ -26,16 +26,11 @@ TARGET_DEFAULTS = {
             "include/llvm/*.h",
         ]),
     },
-    "LLVMRemarks": {
-        # Technically BitstreamWriter, but it's header-only
-        # and BitstreamReader is equivalent.
-        "deps": [":LLVMBitstreamReader"],
+    "LLVMTransformUtils": {
+        "hdrs": glob(["include/llvm-c/Transforms/**/*.h"]),
     },
     "LLVMScalarOpts": {
         "deps": [":LLVMTarget"],
-    },
-    "LLVMTransformUtils": {
-        "hdrs": glob(["include/llvm-c/Transforms/**/*.h"]),
     },
     "LLVMX86CodeGen": {
         "deps": [":LLVMipo"],
