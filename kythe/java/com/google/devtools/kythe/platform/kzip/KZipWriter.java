@@ -24,6 +24,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -44,7 +45,7 @@ public final class KZipWriter implements KZip.Writer {
       try {
         encoding = KZip.Encoding.valueOf(encodingStr.toUpperCase());
       } catch (IllegalArgumentException e) {
-        logger.atWarning().log("Unknown kzip encoding '%s', using %s", encodingStr, encoding);
+        logger.log(Level.WARNING, String.format("Unknown kzip encoding '%s', using %s", encodingStr, encoding));
       }
     }
     DEFAULT_ENCODING = encoding;

@@ -16,25 +16,25 @@
 
 package com.google.devtools.kythe.extractors.java;
 
-import static com.google.auto.common.AnnotationMirrors.getAnnotationValue;
-import static com.google.auto.common.MoreElements.asType;
-
 import com.google.common.collect.ImmutableSet;
 import com.sun.tools.javac.code.Symbol.ClassSymbol;
 import com.sun.tools.javac.code.Symbol.TypeSymbol;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.annotation.processing.AbstractProcessor;
-import javax.annotation.processing.Generated;
 import javax.annotation.processing.RoundEnvironment;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.AnnotationMirror;
+import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.util.Elements;
 import javax.tools.JavaFileObject;
 import javax.tools.JavaFileObject.Kind;
 import javax.tools.StandardLocation;
@@ -94,13 +94,32 @@ public class ProcessAnnotation extends AbstractProcessor {
       }
     }
 
+    Elements elementUtils = processingEnv.getElementUtils();
     for (String annotationName : GENERATED_ANNOTATIONS) {
-      TypeElement generatedType = processingEnv.getElementUtils().getTypeElement(annotationName);
-      if (generatedType == null) {
+      TypeElement annotationType = elementUtils.getTypeElement(annotationName);
+      if (annotationType == null) {
         // javax.annotation.processing.Generated isn't available until Java 9
         continue;
       }
-      visitGeneratedElements(roundEnv, generatedType);
+      for (Element ae : roundEnv.getElementsAnnotatedWith(annotationType)) {
+        String comments = getGeneratedComments(elementUtils, ae, annotationType);
+        if (comments == null || !comments.startsWith(ANNOTATION_COMMENT_PREFIX)) {
+          continue;
+        }
+        String annotationFile = comments.substring(ANNOTATION_COMMENT_PREFIX.length());
+        if (ae instanceof ClassSymbol) {
+          ClassSymbol cs = (ClassSymbol) ae;
+          try {
+            String annotationPath = cs.sourcefile.toUri().resolve(annotationFile).getPath();
+            for (JavaFileObject file :
+                fileManager.getJavaFileForSources(Arrays.asList(annotationPath))) {
+              ((UsageAsInputReportingJavaFileObject) file).markUsed();
+            }
+          } catch (IllegalArgumentException ex) {
+            logger.log(Level.WARNING, "Bad annotationFile: " + annotationFile, ex);
+          }
+        }
+      }
     }
 
     // We must return false so normal processors run after us.
@@ -112,46 +131,28 @@ public class ProcessAnnotation extends AbstractProcessor {
     return SourceVersion.latest();
   }
 
-  private void visitGeneratedElements(RoundEnvironment roundEnv, TypeElement generatedElement) {
-    for (Element ae : roundEnv.getElementsAnnotatedWith(generatedElement)) {
-      String comments = getGeneratedComments(ae, generatedElement);
-      if (comments == null || !comments.startsWith(ANNOTATION_COMMENT_PREFIX)) {
+  private static String getGeneratedComments(
+      Elements elementUtils, Element element, TypeElement annotationType) {
+    AnnotationMirror mirror;
+    for (AnnotationMirror annotationMirror : element.getAnnotationMirrors()) {
+      Element el = annotationMirror.getAnnotationType().asElement();
+      if (!annotationType.equals(el)) {
         continue;
       }
-      String annotationFile = comments.substring(ANNOTATION_COMMENT_PREFIX.length());
-      if (ae instanceof ClassSymbol) {
-        ClassSymbol cs = (ClassSymbol) ae;
-        try {
-          String annotationPath = cs.sourcefile.toUri().resolve(annotationFile).getPath();
-          for (JavaFileObject file :
-              fileManager.getJavaFileForSources(Arrays.asList(annotationPath))) {
-            ((UsageAsInputReportingJavaFileObject) file).markUsed();
-          }
-        } catch (IllegalArgumentException ex) {
-          logger.log(Level.WARNING, "Bad annotationFile: " + annotationFile, ex);
+      Object value = null;
+      for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
+          elementUtils.getElementValuesWithDefaults(annotationMirror).entrySet()) {
+        if (entry.getKey().getSimpleName().contentEquals("comments")) {
+          value = entry.getValue();
+          break;
         }
       }
-    }
-  }
-
-  private static String getGeneratedComments(
-      Element annotatedElement, TypeElement generatedElement) {
-    AnnotationMirror mirror = getAnnotationMirror(annotatedElement, generatedElement);
-    if (mirror == null) {
-      return null;
-    }
-    Object value = getAnnotationValue(mirror, "comments").getValue();
-    if (value instanceof String) {
-      return (String) value;
-    }
-    return null;
-  }
-
-  private static AnnotationMirror getAnnotationMirror(Element element, TypeElement annotationType) {
-    for (AnnotationMirror annotationMirror : element.getAnnotationMirrors()) {
-      TypeElement annotationTypeElement = asType(annotationMirror.getAnnotationType().asElement());
-      if (annotationTypeElement.equals(annotationType)) {
-        return annotationMirror;
+      if (value == null) {
+        throw new IllegalArgumentException(
+            String.format("@%s does not define an element comments()", element));
+      }
+      if (value instanceof String) {
+        return (String) value;
       }
     }
     return null;

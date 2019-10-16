@@ -15,7 +15,6 @@
  */
 package com.google.devtools.kythe.platform.kzip;
 
-import com.google.auto.value.AutoValue;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import com.google.devtools.kythe.proto.Analysis;
@@ -133,26 +132,36 @@ public class KZip {
     private final String subdirectory;
   }
 
-  @AutoValue
-  abstract static class Descriptor {
-    abstract String root();
-
-    abstract Encoding encoding();
+  static class Descriptor {
+    private String root;
+    private Encoding encoding;
+    private Descriptor(String root, Encoding encoding) {
+        this.root = root;
+        this.encoding = encoding;
+    }
 
     static Descriptor create(String root, Encoding encoding) {
-      return new AutoValue_KZip_Descriptor(root, encoding);
+      return new Descriptor(root, encoding);
     }
 
     String getUnitsPath(String digest) {
-      return getUnitsPath(digest, encoding());
+      return getUnitsPath(digest, encoding);
     }
 
     String getUnitsPath(String digest, Encoding encoding) {
-      return Paths.get(root(), encoding.getSubdirectory(), digest).toString();
+      return Paths.get(root, encoding.getSubdirectory(), digest).toString();
     }
 
     String getFilesPath(String digest) {
-      return Paths.get(root(), FILES_SUBDIRECTORY, digest).toString();
+      return Paths.get(root, FILES_SUBDIRECTORY, digest).toString();
+    }
+
+    Encoding encoding() {
+      return this.encoding;
+    }
+
+    String root() {
+      return this.root;
     }
   }
 }

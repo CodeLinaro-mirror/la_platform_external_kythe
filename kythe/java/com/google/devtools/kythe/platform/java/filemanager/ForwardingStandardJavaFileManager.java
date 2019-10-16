@@ -282,7 +282,7 @@ public class ForwardingStandardJavaFileManager
           true,
           StandardJavaFileManager.class.getClassLoader());
     } catch (ClassNotFoundException e) {
-      logger.atInfo().withCause(e).log("Failed to find StandardJavaFileManager class");
+      logger.log(Level.INFO, "Failed to find StandardJavaFileManager class", e);
     }
     return null;
   }

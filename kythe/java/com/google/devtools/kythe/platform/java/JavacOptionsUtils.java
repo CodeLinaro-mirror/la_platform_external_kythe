@@ -49,7 +49,6 @@ import java.util.function.Consumer;
 import javax.tools.OptionChecker;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
-import org.checkerframework.checker.nullness.qual.Nullable;
 
 /**
  * A utility class for dealing with javac command-line options.
@@ -379,7 +378,6 @@ public class JavacOptionsUtils {
    * once, returns the last copy, which matches javac's behavior. If the flag is not specified,
    * returns null.
    */
-  @Nullable
   public static Charset getEncodingOption(List<String> options) {
     int i = options.lastIndexOf("-encoding");
     return (i >= 0) ? Charset.forName(options.get(i + 1)) : null;
