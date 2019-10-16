@@ -16,6 +16,7 @@
 package com.google.devtools.kythe.platform.java.filemanager;
 
 import com.google.common.base.Throwables;
+import com.google.common.reflect.Reflection;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -33,7 +34,7 @@ import javax.tools.StandardJavaFileManager;
 
 /**
  * Forwards the full suite of {@link StandardJavaFileManager} methods to an underlying {@link
- * StandardJavaFileManager}, including methods introduced in JDK9 (except setPathFactory).
+ * StandardJavaFileManager}, including methods introduced in JDK9.
  */
 @com.sun.tools.javac.api.ClientCodeWrapper.Trusted
 public class ForwardingStandardJavaFileManager
@@ -67,6 +68,15 @@ public class ForwardingStandardJavaFileManager
   private static final Method getLocationAsPathsMethod =
       getMethodOrNull("getLocationAsPaths", Location.class);
   private static final Method asPathMethod = getMethodOrNull("asPath", FileObject.class);
+  private static final Class<?> pathFactoryInterface = getClassOrNull("PathFactory");
+  private static final Method setPathFactoryMethod =
+      getMethodOrNull("setPathFactory", pathFactoryInterface);
+
+  /** Equivalent interface for JDK9's StandardJavaFileManager.PathFactory */
+  @FunctionalInterface
+  public static interface PathFactory {
+    Path getPath(String path, String... more);
+  }
 
   protected ForwardingStandardJavaFileManager(StandardJavaFileManager fileManager) {
     super(fileManager);
@@ -240,6 +250,22 @@ public class ForwardingStandardJavaFileManager
     }
   }
 
+  // TODO(shahms): @Override; added in JDK9
+  public void setPathFactory(PathFactory factory) {
+    // TODO(shahms): fileManager.setPathFactory(factory);
+    try {
+      setPathFactoryMethod.invoke(
+          fileManager,
+          Reflection.newProxy(
+              pathFactoryInterface,
+              (proxy, method, args) -> {
+                return factory.getPath((String) args[0], (String[]) args[1]);
+              }));
+    } catch (ReflectiveOperationException e) {
+      throw propagateInvocationTargetErrorIfPossible("setPathFactory", e);
+    }
+  }
+
   private static Method getMethodOrNull(String name, Class<?>... parameterTypes) {
     try {
       return StandardJavaFileManager.class.getMethod(name, parameterTypes);
@@ -249,10 +275,22 @@ public class ForwardingStandardJavaFileManager
     return null;
   }
 
+  private static Class<?> getClassOrNull(String name) {
+    try {
+      return Class.forName(
+          StandardJavaFileManager.class.getCanonicalName() + "$" + name,
+          true,
+          StandardJavaFileManager.class.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      logger.atInfo().withCause(e).log("Failed to find StandardJavaFileManager class");
+    }
+    return null;
+  }
+
   private static IllegalStateException propagateInvocationTargetErrorIfPossible(
       String methodName, ReflectiveOperationException error) {
     if (error instanceof InvocationTargetException) {
-      Throwables.propagateIfPossible(((InvocationTargetException) error).getCause());
+      Throwables.throwIfUnchecked(((InvocationTargetException) error).getCause());
     }
     return unsupportedVersionError(methodName, error);
   }

@@ -17,7 +17,8 @@
 # Download, build, and extract a set of Go packages.  Resulting compilations
 # will be merged into a single .kzip archive in the "$OUTPUT" directory.
 
-: "${TMPDIR:=/tmp}" "${OUTPUT:=/output}"
+: "${TMPDIR:=/tmp}" "${OUTPUT:=/output}" "${KYTHE_KZIP_ENCODING:=JSON}"
+
 
 FLAGS=()
 PACKAGES=()
@@ -30,6 +31,16 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+# golang build tags can optionally be specified with the `KYTHE_GO_BUILD_TAGS`
+# env variable.
+if [ ! -z "$KYTHE_GO_BUILD_TAGS" ]; then
+  FLAGS+=( "--buildtags=$KYTHE_GO_BUILD_TAGS" )
+fi
+
+if [ -n "$KYTHE_PRE_BUILD_STEP" ]; then
+  eval "$KYTHE_PRE_BUILD_STEP"
+fi
 
 echo "Downloading ${PACKAGES[*]}" >&2
 go get -d "${PACKAGES[@]}" || true
@@ -48,5 +59,5 @@ if [[ -f "$OUT" ]]; then
   OUT="$(mktemp -p "$OUTPUT/" compilations.XXXXX.kzip)"
 fi
 echo "Merging compilations into $OUT" >&2
-kzip merge --output "$OUT" "$TMPDIR"/out.*.kzip
+kzip merge --encoding "$KYTHE_KZIP_ENCODING" --output "$OUT" "$TMPDIR"/out.*.kzip
 fix_permissions.sh "$OUTPUT"
