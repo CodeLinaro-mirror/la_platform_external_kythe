@@ -1156,8 +1156,7 @@ void CompilationWriter::WriteIndex(
     build_details.set_rule_type(rule_type_);
     build_details.set_build_config(build_config_);
     // Include the details, but only if any of the fields are meaningfully set.
-    // ANDROID_BUILD: only ByteSize() is available
-    if (build_details.ByteSize() > 0) {
+    if (build_details.ByteSizeLong() > 0) {
       PackAny(build_details, kBuildDetailsURI, unit.add_details());
     }
   }

@@ -20,6 +20,7 @@ filegroup {
         "kythe/proto/common.proto",
         "kythe/proto/cxx.proto",
         "kythe/proto/filecontext.proto",
+        "kythe/proto/metadata.proto",
         "kythe/proto/storage.proto",
     ],
 }
