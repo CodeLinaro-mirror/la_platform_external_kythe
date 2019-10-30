@@ -85,30 +85,71 @@ cc_defaults {
     ],
 }
 
+cc_defaults {
+    name: "kythe_proto_defaults",
+    srcs: [":kythe_protos"],
+    proto: {
+        include_dirs: [
+            "external/kythe",
+            "external/protobuf/src",
+        ],
+        type: "full",
+        canonical_path_from_root: false,
+    },
+    shared_libs: [
+        "libprotobuf-cpp-full",
+    ],
+}
+
 cc_library_host_static {
     name: "kythe_cxx_glog",
+    defaults: ["kythe_common_defaults"],
     srcs: ["kythe/cxx/glog/logging.cc"],
     export_include_dirs: ["kythe/cxx"],
-    defaults: ["kythe_common_defaults"],
     shared_libs: ["libbase"],
+}
+
+cc_library_host_static {
+    name: "kythe_cxx_common",
+    defaults: [
+        "kythe_common_defaults",
+        "kythe_proto_defaults",
+    ],
+    srcs: [
+        "kythe/cxx/common/file_utils.cc",
+        "kythe/cxx/common/file_vname_generator.cc",
+        "kythe/cxx/common/json_proto.cc",
+        "kythe/cxx/common/kythe_metadata_file.cc",
+        "kythe/cxx/common/kzip_writer_aosp.cc",
+        "kythe/cxx/common/path_utils.cc",
+        "kythe/cxx/common/status.cc",
+    ],
+    header_libs: [
+        "libabsl_headers",
+        "rapidjson_headers",
+    ],
+    static_libs: [
+        "kythe_cxx_glog",
+        "libabsl_strings",
+        "libgflags",
+        "libcrypto",
+        "regex-re2",
+    ],
+    shared_libs: [
+        "libbase",
+        "libziparchive",
+    ],
 }
 
 cc_binary_host {
     name: "cxx_extractor",
     defaults: [
         "kythe_common_defaults",
+        "kythe_proto_defaults",
     ],
     srcs: [
-        "kythe/cxx/common/file_utils.cc",
-        "kythe/cxx/common/file_vname_generator.cc",
         "kythe/cxx/common/index_writer.cc",
-        "kythe/cxx/common/json_proto.cc",
-        "kythe/cxx/common/kythe_metadata_file.cc",
-        "kythe/cxx/common/kzip_writer_aosp.cc",
-        "kythe/cxx/common/path_utils.cc",
-        "kythe/cxx/common/protobuf_metadata_file.cc",
         "kythe/cxx/common/schema/edges.cc",
-        "kythe/cxx/common/status.cc",
         "kythe/cxx/extractor/CommandLineUtils.cc",
         "kythe/cxx/extractor/cxx_details.cc",
         "kythe/cxx/extractor/cxx_extractor.cc",
@@ -118,35 +159,58 @@ cc_binary_host {
         "kythe/cxx/indexer/cxx/clang_utils.cc",
         "third_party/llvm/src/cxx_extractor_preprocessor_utils.cc",
         "third_party/llvm/src/clang_builtin_headers.cc",
-        ":kythe_protos",
     ],
     shared_libs: [
         "libbase",
         "libLLVM_host",
         "libclang_cxx_host",
-        "libprotobuf-cpp-full",
         "libziparchive",
     ],
-    proto: {
-        include_dirs: [
-            "external/kythe",
-            "external/protobuf/src",
-        ],
-        type: "full",
-        canonical_path_from_root: false,
-    },
     header_libs: [
         "libabsl_headers",
-        "rapidjson_headers",
     ],
     static_libs: [
         "kythe_cxx_glog",
+        "kythe_cxx_common",
         "regex-re2",
         "libabsl_strings",
         "libabsl_base",
         "libabsl_numeric",
         "libcrypto",
-        "libgflags",
     ],
     generated_headers: ["clang_builtin_headers_resources"],
+}
+
+cc_binary_host {
+    name: "protoc_extractor",
+    defaults: [
+        "kythe_common_defaults",
+        "kythe_proto_defaults",
+    ],
+    srcs: [
+        "kythe/cxx/extractor/proto/proto_extractor.cc",
+        "kythe/cxx/extractor/proto/proto_extractor_main.cc",
+        "kythe/cxx/indexer/proto/search_path.cc",
+    ],
+    header_libs: [
+        "libabsl_headers",
+    ],
+    static_libs: [
+        "kythe_cxx_glog",
+        "kythe_cxx_common",
+        "regex-re2",
+        "libabsl_base",
+        "libabsl_debugging",
+        "libabsl_flags",
+        "libabsl_numeric",
+        "libabsl_strings",
+        "libabsl_synchronization",
+        "libabsl_time",
+        "libcrypto",
+    ],
+    shared_libs: [
+        "libbase",
+        "libziparchive",
+    ],
+
 }
