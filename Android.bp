@@ -212,5 +212,37 @@ cc_binary_host {
         "libbase",
         "libziparchive",
     ],
+}
 
+// A plugin for protobuffers compiler (apotoc) to include metadata descriptor
+// into the generated header. Extractors and indexers use it to trace the entities in
+// the generated files back to the protobuffer dec
+cc_binary_host {
+    name: "proto_metadata_plugin",
+    defaults: [
+        "kythe_common_defaults",
+        "kythe_proto_defaults",
+    ],
+    srcs: [
+        "kythe/cxx/tools/proto_metadata_plugin.cc",
+    ],
+    header_libs: [
+        "libabsl_headers",
+    ],
+    static_libs: [
+        "kythe_cxx_glog",
+        "libabsl_base",
+        "libabsl_container",
+        "libabsl_debugging",
+        "libabsl_hash",
+        "libabsl_numeric",
+        "libabsl_strings",
+        "libabsl_synchronization",
+        "libabsl_time",
+        "libprotoc-kythe",
+    ],
+    shared_libs: [
+        "libbase",
+        "libziparchive",
+    ],
 }
