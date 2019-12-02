@@ -214,7 +214,7 @@ cc_binary_host {
     ],
 }
 
-// A plugin for protobuffers compiler (apotoc) to include metadata descriptor
+// A plugin for protobuffers compiler (aprotoc) to include metadata descriptor
 // into the generated header. Extractors and indexers use it to trace the entities in
 // the generated files back to the protobuffer dec
 cc_binary_host {
@@ -245,4 +245,11 @@ cc_binary_host {
         "libbase",
         "libziparchive",
     ],
+    target: {
+        darwin: {
+            host_ldlibs: [
+                "-framework CoreFoundation",
+            ],
+        },
+    },
 }
