@@ -1,10 +1,11 @@
 #ifndef KYTHE_CXX_COMMON_KZIP_WRITER_AOSP_H_
 #define KYTHE_CXX_COMMON_KZIP_WRITER_AOSP_H_
 
-#include <unordered_map>
+#include <unordered_set>
 
 #include "absl/strings/string_view.h"
 #include "kythe/cxx/common/index_writer.h"
+#include "kythe/cxx/common/kzip_encoding.h"
 #include "kythe/cxx/common/status_or.h"
 #include "kythe/proto/analysis.pb.h"
 #include "ziparchive/zip_writer.h"
@@ -17,7 +18,8 @@ class KzipWriter : public IndexWriterInterface {
  public:
   /// \brief Constructs a Kzip IndexWriter which will create and write to
   /// \param path Path to the file to create. Must not currently exist.
-  static StatusOr<IndexWriter> Create(absl::string_view path);
+  static StatusOr<IndexWriter> Create(
+      absl::string_view path, KzipEncoding encoding = DefaultEncoding());
 
   /// \brief Destroys the KzipWriter.
   ~KzipWriter() override;
@@ -34,30 +36,24 @@ class KzipWriter : public IndexWriterInterface {
   Status Close() override;
 
  private:
-  using Path = std::string;
-  using Contents = std::string;
-  using FileMap = std::unordered_map<Path, Contents>;
+  explicit KzipWriter(FILE* fp, KzipEncoding encoding);
 
-  struct InsertionResult {
-    absl::string_view digest() const;
-    const std::string& path() const { return insertion.first->first; }
-    absl::string_view contents() const { return insertion.first->second; }
-    bool inserted() const { return insertion.second; }
-
-    std::pair<FileMap::iterator, bool> insertion;
-  };
-
-  explicit KzipWriter(FILE *fp);
-
-  InsertionResult InsertFile(absl::string_view root, absl::string_view content);
-  Status WriteTextFile(const std::string& path, absl::string_view content);
+  // Adds an entry <dir_name>/<content_digest> to the kzip file unless it
+  // already exists. Returns <content_digest> on success.
+  StatusOr<std::string> InsertFile(absl::string_view dir_name,
+                                   absl::string_view content_digest,
+                                   absl::string_view content);
+  Status WriteTextFile(absl::string_view name, absl::string_view content);
   int32_t InitializeArchive();
-  static std::string SHA256Digest(absl::string_view content);
+  int32_t CreateDirEntry(absl::string_view dir_name);
+  bool HasEncoding(KzipEncoding encoding);
+  static KzipEncoding DefaultEncoding();
 
-  FILE *fp_;
+  FILE* fp_;
   ZipWriter zip_writer_;
-  bool initialized_ = false;  // Whether or not the `root` entry exists.
-  FileMap contents_;
+  bool initialized_;  // Whether or not the `root` entry exists.
+  KzipEncoding encoding_;
+  std::unordered_set<std::string> contents_;
 };
 
 }  // namespace kythe
