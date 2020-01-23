@@ -301,9 +301,11 @@ public class ForwardingStandardJavaFileManager
     if (error instanceof InvocationTargetException) {
       // Log the exception because the propagated destination may not provide a nice error log.
       Throwable t = ((InvocationTargetException) error).getCause();
-      logger.atWarning().withCause(t).log(
-          "Error in underlying filemanager. A more detailed message may have been output to"
-              + " stderr.");
+      logger.log(
+          Level.WARNING,
+          "Error in underlying filemanager: "
+              + ". A more detailed message may have been output to stderr.",
+          t);
       Throwables.propagateIfPossible(t, declaredType);
     }
     return unsupportedVersionError(methodName, error);
