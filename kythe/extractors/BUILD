@@ -23,7 +23,7 @@ java_library(
     name = "protobuf_java",
     exports = [
         "@com_google_protobuf//:protobuf_java",
-        "@javax_annotation_jsr250_api//jar",
+        "@maven//:javax_annotation_jsr250_api",
     ],
 )
 
@@ -42,6 +42,21 @@ proto_lang_toolchain(
     ],
     command_line = "--$(PLUGIN_OUT)=:$(OUT)",
     plugin = "//kythe/cxx/tools:proto_metadata_plugin",
+    runtime = "@com_google_protobuf//:protobuf",
+)
+
+# Alternatively, if the plugin doesn't work you can use the default code generator
+# to output the metadata into a separate file.  This needs to be invoked with:
+#
+# bazel build \
+#   --proto_toolchain_for_cc=@io_kythe//kythe/extractor:cc_native_proto_toolchain \
+#   --cc_proto_library_header_suffixes=.pb.h,.pb.h.meta
+proto_lang_toolchain(
+    name = "cc_native_proto_toolchain",
+    blacklisted_protos = [
+        "@com_google_protobuf//:well_known_protos",
+    ],
+    command_line = "--cpp_out=annotate_headers,annotation_pragma_name=kythe_metadata,annotation_guard_name=KYTHE_IS_RUNNING:$(OUT)",
     runtime = "@com_google_protobuf//:protobuf",
 )
 

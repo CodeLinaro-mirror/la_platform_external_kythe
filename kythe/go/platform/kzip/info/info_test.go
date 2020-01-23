@@ -17,53 +17,217 @@
 package info
 
 import (
+	"bytes"
 	"testing"
 
-	"github.com/golang/protobuf/proto"
+	"kythe.io/kythe/go/platform/kzip"
+	"kythe.io/kythe/go/util/compare"
 
 	apb "kythe.io/kythe/proto/analysis_go_proto"
+	spb "kythe.io/kythe/proto/storage_go_proto"
 )
 
 func TestMergeKzipInfo(t *testing.T) {
 	infos := []*apb.KzipInfo{
 		{
-			TotalUnits: 1,
-			TotalFiles: 2,
 			Corpora: map[string]*apb.KzipInfo_CorpusInfo{
 				"corpus1": {
-					Files: map[string]int32{"python": 2},
-					Units: map[string]int32{"python": 1},
+					LanguageRequiredInputs: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+						"python": {
+							Count: 2,
+						},
+					},
+					LanguageSources: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+						"python": {
+							Count: 1,
+						},
+					},
 				},
 			},
+			CriticalKzipErrors: []string{"foo.py doesn't have a required_input"},
+			Size:               10,
 		},
 		{
-			TotalUnits: 1,
-			TotalFiles: 2,
 			Corpora: map[string]*apb.KzipInfo_CorpusInfo{
 				"corpus1": {
-					Files: map[string]int32{"go": 2},
-					Units: map[string]int32{"python": 1},
+					LanguageRequiredInputs: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+						"python": {
+							Count: 1,
+						},
+					},
+				},
+				"corpus2": {
+					LanguageSources: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+						"python": {
+							Count: 5,
+						},
+						"java": {
+							Count: 3,
+						},
+					},
+				},
+				"unnamed_required_input_corpus": {
+					LanguageRequiredInputs: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+						"python": {
+							Count: 9,
+						},
+						"java": {
+							Count: 20,
+						},
+						"go": {
+							Count: 2,
+						},
+					},
 				},
 			},
+			CriticalKzipErrors: []string{"foo2.py doesn't have a required_input"},
+			Size:               30,
 		},
 	}
 
 	want := &apb.KzipInfo{
-		TotalUnits: 2,
-		TotalFiles: 4,
 		Corpora: map[string]*apb.KzipInfo_CorpusInfo{
 			"corpus1": {
-				Files: map[string]int32{
-					"go":     2,
-					"python": 2,
+				LanguageRequiredInputs: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+					"python": {
+						Count: 3,
+					},
 				},
-				Units: map[string]int32{"python": 2},
+				LanguageSources: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+					"python": {
+						Count: 1,
+					},
+				},
+			},
+			"corpus2": {
+				LanguageSources: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+					"python": {
+						Count: 5,
+					},
+					"java": {
+						Count: 3,
+					},
+				},
+			},
+			"unnamed_required_input_corpus": {
+				LanguageRequiredInputs: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+					"python": {
+						Count: 9,
+					},
+					"java": {
+						Count: 20,
+					},
+					"go": {
+						Count: 2,
+					},
+				},
+			},
+		},
+		CriticalKzipErrors: []string{"foo.py doesn't have a required_input", "foo2.py doesn't have a required_input"},
+		Size:               40,
+	}
+	wantTotal := apb.KzipInfo_CorpusInfo{
+		LanguageRequiredInputs: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+			"python": {
+				Count: 12,
+			},
+			"java": {
+				Count: 20,
+			},
+			"go": {
+				Count: 2,
+			},
+		},
+		LanguageSources: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+			"python": {
+				Count: 6,
+			},
+			"java": {
+				Count: 3,
 			},
 		},
 	}
 
 	got := MergeKzipInfo(infos)
-	if !proto.Equal(got, want) {
-		t.Errorf("got %v, want %v", got, want)
+	gotTotal := KzipInfoTotalCount(infos)
+	if diff := compare.ProtoDiff(got, want); diff != "" {
+		t.Errorf("Merged kzips don't match: (-: found, +: expected)\n%s", diff)
+	}
+	if diff := compare.ProtoDiff(&gotTotal, &wantTotal); diff != "" {
+		t.Errorf("got %v, want %v", gotTotal, wantTotal)
+		t.Errorf("Merged kzips don't match: (-: found, +: expected)\n%s", diff)
+	}
+}
+
+func makeKzip(t *testing.T, u *apb.CompilationUnit) *bytes.Reader {
+	b := bytes.NewBuffer(nil)
+	w, err := kzip.NewWriter(b)
+	if err != nil {
+		t.Fatalf("opening writer: %v", err)
+	}
+	if _, err = w.AddUnit(u, nil); err != nil {
+		t.Fatalf("AddUnit: unexpected error: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Writer.Close: unexpected error: %v", err)
+	}
+	return bytes.NewReader(b.Bytes())
+}
+
+var infoTests = []struct {
+	in  *apb.CompilationUnit
+	out *apb.KzipInfo
+}{
+	{
+		&apb.CompilationUnit{
+			VName: &spb.VName{Language: "python"},
+			RequiredInput: []*apb.CompilationUnit_FileInput{
+				{
+					VName: &spb.VName{Corpus: "mycorpus", Language: "python", Path: "file1.py"},
+					Info:  &apb.FileInfo{Path: "file1.py"},
+				},
+			},
+		},
+		&apb.KzipInfo{
+			Corpora: map[string]*apb.KzipInfo_CorpusInfo{
+				"mycorpus": {
+					LanguageRequiredInputs: map[string]*apb.KzipInfo_CorpusInfo_RequiredInputs{
+						"python": {
+							Count: 1,
+						},
+					},
+				},
+			},
+		},
+	},
+
+	{
+		&apb.CompilationUnit{
+			VName: &spb.VName{Language: "python"},
+			RequiredInput: []*apb.CompilationUnit_FileInput{
+				{
+					VName: &spb.VName{Language: "python", Path: "file1.py"},
+					Info:  &apb.FileInfo{Path: "file1.py"},
+				},
+			},
+		},
+		&apb.KzipInfo{
+			CriticalKzipErrors: []string{"unable to determine corpus for required_input \"file1.py\" in CU language:\"python\""},
+		},
+	},
+}
+
+func TestInfo(t *testing.T) {
+	for _, testcase := range infoTests {
+		kz := makeKzip(t, testcase.in)
+		got, err := KzipInfo(kz, 0)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+
+		if diff := compare.ProtoDiff(testcase.out, got); diff != "" {
+			t.Errorf("KzipInfo() output differs from expected (-: found, +: expected)\n%s", diff)
+		}
 	}
 }

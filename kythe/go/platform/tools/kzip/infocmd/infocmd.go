@@ -21,6 +21,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"runtime"
 	"strings"
 
 	"kythe.io/kythe/go/platform/kzip"
@@ -53,7 +54,7 @@ func New() subcommands.Command {
 func (c *infoCommand) SetFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.input, "input", "", "Path for input kzip file (required)")
 	fs.StringVar(&c.writeFormat, "write_format", "json", "Output format, can be 'json' or 'proto'")
-	fs.IntVar(&c.readConcurrency, "read_concurrency", 1, "Max concurrency of reading compilation units from the kzip")
+	fs.IntVar(&c.readConcurrency, "read_concurrency", runtime.NumCPU(), "Max concurrency of reading compilation units from the kzip. Defaults to the number of cpu cores.")
 }
 
 // Execute implements the subcommands interface and gathers info from the requested file.
@@ -72,7 +73,11 @@ func (c *infoCommand) Execute(ctx context.Context, fs *flag.FlagSet, _ ...interf
 		return c.Fail("Invalid --write_format. Can be 'json' or 'proto'.")
 	}
 
-	kzipInfo, err := info.KzipInfo(f, kzip.ReadConcurrency(c.readConcurrency))
+	s, err := os.Stat(c.input)
+	if err != nil {
+		return c.Fail("Couldn't stat kzip file: %v", err)
+	}
+	kzipInfo, err := info.KzipInfo(f, s.Size(), kzip.ReadConcurrency(c.readConcurrency))
 	if err != nil {
 		return c.Fail("Scanning kzip: %v", err)
 	}

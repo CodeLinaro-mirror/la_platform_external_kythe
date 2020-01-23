@@ -20,22 +20,24 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.devtools.kythe.platform.java.filemanager.CompilationUnitFileTree;
 import com.google.devtools.kythe.platform.shared.FileDataProvider;
 import com.google.devtools.kythe.proto.Analysis.CompilationUnit;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.FileStore;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.WatchService;
 import java.nio.file.attribute.UserPrincipalLookupService;
 import java.nio.file.spi.FileSystemProvider;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 /**
@@ -171,6 +173,26 @@ public final class CompilationUnitFileSystem extends FileSystem {
     }
   }
 
+  public ListenableFuture<byte[]> startRead(Path file) throws IOException {
+    String digest = digest(file);
+    if (digest == null || digest.equals(CompilationUnitFileTree.DIRECTORY_DIGEST)) {
+      throw new NoSuchFileException(file.toString());
+    }
+    return fileDataProvider.startLookup(file.toString(), digest);
+  }
+
+  public Collection<Path> list(Path dir) throws IOException {
+    final Path abs = getRootDirectory().resolve(dir).normalize();
+    Map<String, String> entries = compilationFileTree.list(abs.toString());
+    if (entries == null) {
+      if (digest(abs) == null) {
+        throw new NoSuchFileException(dir.toString());
+      }
+      throw new NotDirectoryException(dir.toString());
+    }
+    return entries.keySet().stream().map(k -> dir.resolve(k)).collect(Collectors.toSet());
+  }
+
   String digest(Path file) {
     checkNotNull(file);
     file = getRootDirectory().resolve(file).normalize();
@@ -185,35 +207,14 @@ public final class CompilationUnitFileSystem extends FileSystem {
 
   void checkAccess(Path path) throws IOException {
     if (digest(path) == null) {
-      throw new FileNotFoundException();
-    }
-  }
-
-  Iterable<Path> list(Path dir) throws IOException {
-    final Path abs = getRootDirectory().resolve(dir).normalize();
-    Map<String, String> entries = compilationFileTree.list(abs.toString());
-    if (entries == null) {
-      throw new FileNotFoundException(dir.toString());
-    }
-    return entries.keySet().stream().map(k -> dir.resolve(k)).collect(Collectors.toSet());
-  }
-
-  byte[] read(Path file) throws IOException {
-    String digest = digest(file);
-    if (digest == null || digest.equals(CompilationUnitFileTree.DIRECTORY_DIGEST)) {
-      throw new FileNotFoundException(file.toString());
-    }
-    try {
-      return fileDataProvider.startLookup(file.toString(), digest).get();
-    } catch (InterruptedException | ExecutionException exc) {
-      throw new IOException(exc);
+      throw new NoSuchFileException(path.toString());
     }
   }
 
   CompilationUnitFileAttributes readAttributes(Path path) throws IOException {
     String digest = digest(path);
     if (digest == null) {
-      throw new FileNotFoundException(path.toString());
+      throw new NoSuchFileException(path.toString());
     }
     return new CompilationUnitFileAttributes(
         digest.equals(CompilationUnitFileTree.DIRECTORY_DIGEST) ? -1 : 1);

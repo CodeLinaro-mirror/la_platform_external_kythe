@@ -250,6 +250,15 @@ class SymbolVNameStore {
 }
 
 /**
+ * isParameterPropertyDeclaration wraps ts.isParameterPropertyDeclaration and
+ * exposes an API that's compatible across TypeScript 3.5 & 3.6.
+ */
+function isParameterPropertyDeclaration(node: ts.Node, parent: ts.Node): node is ts.ParameterPropertyDeclaration {
+  // TODO: remove/inline once fully on TypeScript 3.6+
+  return (ts.isParameterPropertyDeclaration as any)(node, parent);
+}
+
+/**
  * StandardIndexerContext provides the standard definition of information about
  * a TypeScript program and common methods used by the TypeScript indexer and
  * its plugins. See the IndexerContext interface definition for more details.
@@ -483,7 +492,7 @@ class StandardIndexerContext implements IndexerHost {
         case ts.SyntaxKind.Constructor:
           // Class members declared with a shorthand in the constructor should
           // be scoped to the class, not the constructor.
-          if (!ts.isParameterPropertyDeclaration(startNode)) {
+          if (!isParameterPropertyDeclaration(startNode, startNode.parent)) {
             parts.push('constructor');
           }
           break;
@@ -1031,6 +1040,14 @@ class Visitor {
     if (modulePath) {
       const kModule = this.newVName('module', modulePath);
       this.emitEdge(this.newAnchor(moduleRef), EdgeKind.REF_IMPORTS, kModule);
+    } else {
+      // Check if module being imported is declared via `declare module`
+      // and if so - output ref to that statement.
+      const decl = moduleSym.valueDeclaration;
+      if (ts.isModuleDeclaration(decl)) {
+        const kModule =  this.host.getSymbolName(moduleSym, TSNamespace.NAMESPACE);
+        this.emitEdge(this.newAnchor(moduleRef), EdgeKind.REF_IMPORTS, kModule);
+      }
     }
 
     // TODO(#4021): See discussion.
@@ -1224,14 +1241,28 @@ class Visitor {
           console.error(`TODO: export ${exp.name} has no symbol`);
           continue;
         }
-        // TODO: import a type, not just a value.
         const remoteSym = this.typeChecker.getAliasedSymbol(localSym);
-        const kExport = this.host.getSymbolName(remoteSym, TSNamespace.VALUE);
-        this.emitEdge(this.newAnchor(exp.name), EdgeKind.REF, kExport);
-        if (exp.propertyName) {
-          // Aliased export; propertyName is the 'as <...>' bit.
-          this.emitEdge(
-              this.newAnchor(exp.propertyName), EdgeKind.REF, kExport);
+        const anchor = this.newAnchor(exp.name);
+        // Aliased export; propertyName is the 'as <...>' bit.
+        const propertyAnchor = exp.propertyName ?
+            this.newAnchor(exp.propertyName) : null;
+        // Symbol is a value.
+        if (remoteSym.flags & ts.SymbolFlags.Value) {
+          const kExport =
+              this.host.getSymbolName(remoteSym, TSNamespace.VALUE);
+          this.emitEdge(anchor, EdgeKind.REF, kExport);
+          if (propertyAnchor) {
+            this.emitEdge(propertyAnchor, EdgeKind.REF, kExport);
+          }
+        }
+        // Symbol is a type.
+        if (remoteSym.flags & ts.SymbolFlags.Type) {
+          const kExport =
+              this.host.getSymbolName(remoteSym, TSNamespace.TYPE);
+          this.emitEdge(anchor, EdgeKind.REF, kExport);
+          if (propertyAnchor) {
+            this.emitEdge(propertyAnchor, EdgeKind.REF, kExport);
+          }
         }
       }
     }
@@ -1459,7 +1490,7 @@ class Visitor {
                   kFunc, makeOrdinalEdge(EdgeKind.PARAM, paramNum), kParam);
               ++paramNum;
 
-              if (ts.isParameterPropertyDeclaration(param)) {
+              if (isParameterPropertyDeclaration(param, param.parent)) {
                 // Class members defined in the parameters of a constructor are
                 // children of the class type.
                 const parentName = param.parent.parent.name;

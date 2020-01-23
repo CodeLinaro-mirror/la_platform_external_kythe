@@ -23,6 +23,8 @@ def _root_path(ctx):
 
 def _join_path(root, path):
     """Special handling for absolute paths."""
+    if path.startswith(":"):
+        return path  # Actually a label
     if path.startswith(_ROOT_PREFIX):
         return paths.normalize(paths.relativize(path, _ROOT_PREFIX))
     if root.startswith(_ROOT_PREFIX):
@@ -201,12 +203,11 @@ def _add_tablegen(ctx, name, tag, *srcs):
     root = _root_path(ctx)
     kwargs = _make_kwargs(ctx, name, [_join_path(root, s) for s in srcs])
     kwargs["srcs"].extend(_llvm_srcglob(root))
-    deps = [
-        ":LLVMSupport",
-        ":LLVMTableGen",
-        ":LLVMMC",
-    ] + kwargs.pop("deps", [])
-    native.cc_binary(name = name, deps = deps, **kwargs)
+    if name.startswith("llvm-"):
+        kwargs.setdefault("deps", []).extend(_llvm_build_deps(ctx, name[5:]))
+    else:
+        kwargs.setdefault("deps", []).append(":LLVMTableGen")
+    native.cc_binary(name = name, **kwargs)
 
 def _set_cmake_var(ctx, key, *args):
     if key in ("LLVM_TARGET_DEFINITIONS", "LLVM_LINK_COMPONENTS", "sources"):
@@ -322,6 +323,7 @@ def make_context(**kwargs):
         set = _set_cmake_var,
         configure_file = _configure_file,
         add_llvm_library = _add_llvm_library,
+        add_llvm_component_library = _add_llvm_library,
         add_llvm_target = _add_llvm_target,
         add_clang_library = _add_clang_library,
         add_tablegen = _add_tablegen,

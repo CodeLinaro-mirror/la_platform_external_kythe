@@ -244,7 +244,10 @@ func (t *Table) Decorations(ctx context.Context, req *xpb.DecorationsRequest) (*
 		return nil, err
 	}
 
-	reply := &xpb.DecorationsReply{Location: loc}
+	reply := &xpb.DecorationsReply{
+		Location:    loc,
+		GeneratedBy: decor.GeneratedBy,
+	}
 
 	if req.SourceText {
 		reply.Encoding = decor.File.Encoding
@@ -729,6 +732,9 @@ func addMergeNode(mergeMap map[string]string, allTickets []string, rootNode, mer
 }
 
 func nodeKind(n *srvpb.Node) string {
+	if n == nil {
+		return ""
+	}
 	for _, f := range n.Fact {
 		if f.Name == facts.NodeKind {
 			return string(f.Value)

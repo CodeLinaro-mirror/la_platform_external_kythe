@@ -9,6 +9,7 @@ go_library(
     ],
     deps = [
         "//kythe/go/platform/kzip",
+        "//kythe/go/util/compare",
         "//kythe/proto:analysis_go_proto",
         "@org_bitbucket_creachadair_stringset//:go_default_library",
     ],
@@ -20,6 +21,7 @@ go_test(
     library = ":info",
     deps = [
         "//kythe/proto:analysis_go_proto",
+        "//kythe/proto:storage_go_proto",
         "@com_github_golang_protobuf//proto:go_default_library",
     ],
 )

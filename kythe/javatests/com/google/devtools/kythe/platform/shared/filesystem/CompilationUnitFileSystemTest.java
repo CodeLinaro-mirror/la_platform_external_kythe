@@ -17,6 +17,7 @@
 package com.google.devtools.kythe.platform.shared.filesystem;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.fail;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.devtools.kythe.extractors.shared.ExtractorUtils;
@@ -26,7 +27,10 @@ import com.google.devtools.kythe.proto.Analysis.CompilationUnit;
 import com.google.devtools.kythe.proto.Analysis.FileData;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -223,6 +227,25 @@ public final class CompilationUnitFileSystemTest {
   }
 
   @Test
+  public void newDirectoryStream_failsOnNonDirectory() {
+    CompilationUnitFileSystem fileSystem =
+        builder()
+            .addFile("relative/nested/path/with/empty/file", "relativeContents")
+            .addFile("/absolute/nested/path/with/empty/file", "absoluteContents")
+            .build();
+
+    try {
+      try (DirectoryStream<Path> stream =
+          Files.newDirectoryStream(fileSystem.getPath("/absolute/nested/path/with/empty/file"))) {}
+      fail("Expected NotDirectoryException not thrown.");
+    } catch (NotDirectoryException exc) {
+      assertThat(exc).hasMessageThat().isEqualTo("/absolute/nested/path/with/empty/file");
+    } catch (IOException exc) {
+      throw new RuntimeException(exc);
+    }
+  }
+
+  @Test
   public void toRealPath_usesCompilationRoot() {
     CompilationUnitFileSystem fileSystem =
         builder().setWorkingDirectory("/working/directory").build();
@@ -231,5 +254,26 @@ public final class CompilationUnitFileSystemTest {
         .isEqualTo("/working/directory/relative/path");
     assertThat(fileSystem.getPath("/absolute/path").toAbsolutePath().toString())
         .isEqualTo("/absolute/path");
+  }
+
+  @Test
+  public void newDirectoryStream_failsMissingFile() {
+    CompilationUnitFileSystem fileSystem =
+        builder()
+            .addFile("relative/nested/path/with/empty/file", "relativeContents")
+            .addFile("/absolute/nested/path/with/empty/file", "absoluteContents")
+            .build();
+
+    try {
+      try (DirectoryStream<Path> stream =
+          Files.newDirectoryStream(fileSystem.getPath("/absolute/path/does/not/exist"))) {
+        assertThat(stream).isEmpty(); // Shouldn't actually get here, but still.
+      }
+      fail("Expected NoSuchFileException not thrown.");
+    } catch (NoSuchFileException exc) {
+      assertThat(exc).hasMessageThat().isEqualTo("/absolute/path/does/not/exist");
+    } catch (IOException exc) {
+      throw new RuntimeException(exc);
+    }
   }
 }

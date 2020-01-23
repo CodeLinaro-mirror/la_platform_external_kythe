@@ -43,6 +43,7 @@
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/Basic/Builtins.h"
 #include "clang/Index/USRGeneration.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Sema/Lookup.h"
@@ -5304,13 +5305,14 @@ bool IndexerASTVisitor::VisitObjCIvarRefExpr(
 
 bool IndexerASTVisitor::VisitObjCMessageExpr(
     const clang::ObjCMessageExpr* Expr) {
+  SourceRange SR = Expr->getSourceRange();
   // The end of the source range for ObjCMessageExpr is the location of the
   // right brace. We actually want to include the right brace in the range
   // we record, so get the location *after* the right brace.
-  const auto AfterBrace =
-      ConsumeToken(Expr->getEndLoc(), clang::tok::r_square).getEnd();
-  const SourceRange SR(Expr->getBeginLoc(), AfterBrace);
-  if (auto RCC = ExplicitRangeInCurrentContext(SR)) {
+  if (SR.getBegin() != SR.getEnd()) {
+    SR.setEnd(SR.getEnd().getLocWithOffset(1));
+  }
+  if (auto RCC = ExpandedRangeInCurrentContext(SR)) {
     // This does not take dynamic dispatch into account when looking for the
     // method definition.
     if (const auto* Callee = FindMethodDefn(Expr->getMethodDecl(),

@@ -26,7 +26,7 @@ RUN ln -s /usr/bin/clang-6.0 /usr/bin/clang && \
 
 # Extract the Kythe release archive to /kythe
 COPY kythe/release/kythe-v*.tar.gz /tmp/
-RUN tar xzf /tmp/kythe-v*.tar.gz && \
+RUN tar --no-same-owner -xzf /tmp/kythe-v*.tar.gz && \
     mv kythe-v*/ /kythe && \
     rm /tmp/kythe-v*.tar.gz
 
@@ -34,10 +34,6 @@ RUN tar xzf /tmp/kythe-v*.tar.gz && \
 ADD kythe/extractors/bazel/extract.sh /kythe/
 ADD kythe/extractors/bazel/bazel_wrapper.sh /kythe/
 ADD kythe/release/base/fix_permissions.sh /kythe/
-ADD external/javax_annotation_jsr250_api/jar/jsr250-api-1.0.jar /kythe/
-
-# Bazel repository setup
-ADD kythe/extractors/bazel/extractors.bazelrc /kythe/bazelrc
 
 # Bazelisk
 ADD external/com_github_philwo_bazelisk/linux_amd64_stripped/bazelisk /kythe/
