@@ -12,6 +12,6 @@ third_party {
     type: GIT
     value: "https://github.googlesource.com/kythe/kythe"
   }
-  version: "6a03e4226a4679a38b248770a5de306b91cb8b6d"
-  last_upgrade_date { year: 2019 month: 06 day: 24 }
+  version: "0.39"
+  last_upgrade_date { year: 2020 month: 01 day: 27 }
 }
