@@ -1,5 +1,74 @@
 # Release Notes
 
+## [v0.0.42] - 2020-02-19
+
+#### Bug Fixes
+
+* **copy_kzip:**
+  *  hard links always fail under bazel so don't try (#4365) ([10540135](https://github.com/kythe/kythe/commit/10540135260c2559171ad4ad68844784133773e9))
+* **cxx_indexer:**
+  *  address marked-source differences on builtin functions (#4379) ([cbd9244c](https://github.com/kythe/kythe/commit/cbd9244c52c9deb0f40772f8e0b5baaf9846be5f))
+  *  emit exactly one file-file generates edge for proto (#4377) ([5ab67169](https://github.com/kythe/kythe/commit/5ab6716903a631d8543f11b39c8ebed6fc8d2fe6))
+  *  use anchor not decl for file-file generates endpoint (#4372) ([6e14dbde](https://github.com/kythe/kythe/commit/6e14dbde996a9edb2cb07c3ede85298be856149e))
+* **go_indexer:**  use the anchor for the file-file generates edges (#4348) ([3d658d1d](https://github.com/kythe/kythe/commit/3d658d1d45deeac5f77d164d9e1b45d7d76f5872))
+* **tooling:**
+  *  ensure VNameRewriteRule JSON encoding is canonical (#4352) ([124e000a](https://github.com/kythe/kythe/commit/124e000a1f4998813805f698483334ca160b571a))
+  *  keep track of added source file paths (#4351) ([e753a99a](https://github.com/kythe/kythe/commit/e753a99a87ee85c29a86aff61ba983917104fe0d))
+
+#### Features
+
+* **cxx_indexer:**
+  *  add test for proto/c++ xrefs with included proto (#4363) ([90f7c4e0](https://github.com/kythe/kythe/commit/90f7c4e0a696d91de8a00d2e33d85806a268996f))
+  *  emit USRs for macros (#4315) (#4358) ([87d3be72](https://github.com/kythe/kythe/commit/87d3be72bf54b1f65bde11ba02df79de2dd05304))
+* **extractors:**  add a passthrough bazel extractor (#4354) ([e22e87aa](https://github.com/kythe/kythe/commit/e22e87aa1ae37b97a09f2d4317b0167d279f6f2f))
+* **go extractor:**  relative paths against KYTHE_ROOT_DIRECTORY (#4380) ([18c0563f](https://github.com/kythe/kythe/commit/18c0563fcd9ffbca8f6b071e6a29078a4e8573e9))
+* **go indexer:**  add option to only emit doc/uri facts for stdlib pkgs (#4383) ([255331cb](https://github.com/kythe/kythe/commit/255331cb1e861f1f9741c7afce56988c04a28658))
+* **go_indexer:**  add generates edges for proto-generated files (#4337) ([2f01e628](https://github.com/kythe/kythe/commit/2f01e6281e6bf3ddc1cf15efb87dff3363cb1c3e))
+* **kzip_merge:**  allow applying vname rules during merge (#4366) ([21d68ce6](https://github.com/kythe/kythe/commit/21d68ce62bcd4396e494792287ad4591abe293b6))
+* **tooling:**  add vnames utility for handling rewrite rules (#4347) ([4a75aef1](https://github.com/kythe/kythe/commit/4a75aef1848c689577eb31222a4f8495f667c17f))
+
+## [v0.0.41] - 2020-01-31
+
+#### Features
+
+* **cxx_indexer:**  add generates edges for proto-generated files (#4332) ([299950d0](https://github.com/kythe/kythe/commit/299950d06d31c8d323e7b4de75050ca0585dde23))
+* **java_extractor:**
+  * allow passing search paths as a map (#4323) ([2ebd4c9f](https://github.com/kythe/kythe/commit/2ebd4c9f80daa3a0cce1ae156fb682e60baf3a56))
+  * allow excluding modules from openjdk11 extraction (#4341) ([b09b9a7f](https://github.com/kythe/kythe/commit/b09b9a7fdf212be5f6158d2be61f03ef2000a2a2))
+  * allow openjdk11 build and src dirs to differ (#4338) ([b6bb46d4](https://github.com/kythe/kythe/commit/b6bb46d4935b790abc124319a0aeb6219c91198d))
+* **java_indexer:**  add generates edges for proto-generated java files (#4321) ([8f2080d4](https://github.com/kythe/kythe/commit/8f2080d48322e8b749c0753b769d9c5332fae934))
+
+#### Bug Fixes
+
+* **cxx_common:**  rework VNameRef to conform to VName, templatize VNameLess (#4331) ([2a83959d](https://github.com/kythe/kythe/commit/2a83959dc1f7851029347cb31a4b66c3c93a42b9))
+* **go extractor:**  treat -arc flag like -importpath (#4324) ([0f75ac02](https://github.com/kythe/kythe/commit/0f75ac02d55cdc6e9b4fb5b1ab1a9d8927807f57))
+* **java_extractor:**
+  *  indirect runfiles path in opendjk11 extractor (#4335) ([0354d63a](https://github.com/kythe/kythe/commit/0354d63add4ed6dbdaa00ef70acd4af06aad7695))
+  *  wrong number of logger arguments (#4330) ([e645e980](https://github.com/kythe/kythe/commit/e645e980fd0ac008782bc97f95f59a16f35e97a7))
+  *  use a stable working directory if possible (#4329) ([75dd01f0](https://github.com/kythe/kythe/commit/75dd01f06ce9d1b15712d3d5a90d12d48e26075c))
+
+## [v0.0.40] - 2020-01-24
+
+#### Bug Fixes
+
+* **java_extractor:**
+  *  add the processor classpath to the extractor action (#4301) ([b079ce3e](https://github.com/kythe/kythe/commit/b079ce3eaa775b6fdf09243e2d9e4df933e66e45))
+* **java_indexer:**
+  *  only attempt to load implicit metadata if it exists (#4307) ([188b1cec](https://github.com/kythe/kythe/commit/188b1cec439ed4e6559a1719f5851a7a82099aca))
+  *  correctly reference JVM field nodes (#4304) ([3e4c8add](https://github.com/kythe/kythe/commit/3e4c8add9aacdbde3b0c246b53fcaa33299b9227))
+  *  use in-memory class_output path for modular builds (#4299) ([c8d23078](https://github.com/kythe/kythe/commit/c8d2307838c8822aac5d2786cfeb630709d0671a))
+  *  handle --system none properly (#4297) ([dc585623](https://github.com/kythe/kythe/commit/dc585623a8671f11e6917da45d5c139f934fb367))
+  *  handle null FileObjects in readAhead (#4290) ([0b7b623d](https://github.com/kythe/kythe/commit/0b7b623d442bfe6e436cff9a4d921c98e7390041))
+  *  enable readahead in new filemanager (#4284) ([078aba28](https://github.com/kythe/kythe/commit/078aba28a5d575d059e03424ff831530ee46367c))
+
+#### Features
+
+* **java_indexer:**  support implicit protobuf metadata (#4262) ([cace853f](https://github.com/kythe/kythe/commit/cace853fa2d88e7a72b8608628436e4da67ff5b8))
+* **runextractor:**  Tell cmake to use clang (#4319) ([5d10af8b](https://github.com/kythe/kythe/commit/5d10af8bb9bb129efb9cd632811399cfacf7095f))
+* **kzip:**
+  *  add source/input directories recursively (#4302) ([d9442588](https://github.com/kythe/kythe/commit/d9442588c2094d3be450b5a4fb49731f024d6d08))
+  *  relativize input paths (#4303) ([fff4f9c3](https://github.com/kythe/kythe/commit/fff4f9c37696f78cde72c92aa8072fc5e3a4a969))
+
 ## [v0.0.39] - 2019-12-19
 
 #### Bug Fixes
@@ -770,7 +839,10 @@ https://github.com/kythe/kythe/compare/v0.0.26...v0.0.27
 
 Initial release
 
-[Unreleased] https://github.com/kythe/kythe/compare/v0.0.39...HEAD
+[Unreleased] https://github.com/kythe/kythe/compare/v0.0.42...HEAD
+[v0.0.42] https://github.com/kythe/kythe/compare/v0.0.41...v0.0.42
+[v0.0.41] https://github.com/kythe/kythe/compare/v0.0.40...v0.0.41
+[v0.0.40] https://github.com/kythe/kythe/compare/v0.0.39...v0.0.40
 [v0.0.39] https://github.com/kythe/kythe/compare/v0.0.38...v0.0.39
 [v0.0.38] https://github.com/kythe/kythe/compare/v0.0.37...v0.0.38
 [v0.0.37] https://github.com/kythe/kythe/compare/v0.0.36...v0.0.37

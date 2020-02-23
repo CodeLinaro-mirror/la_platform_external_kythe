@@ -91,6 +91,7 @@ import com.sun.tools.javac.util.Context;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -141,7 +142,9 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
   private final JvmGraph jvmGraph;
   private final Set<VName> emittedIdentType = new HashSet<>();
 
+  private final Set<String> metadataFilePaths = new HashSet<>();
   private List<Metadata> metadata;
+
   private KytheDocTreeScanner docScanner;
 
   private KytheTreeScanner(
@@ -226,6 +229,7 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
     }
     TreeContext ctx = new TreeContext(filePositions, compilation);
     metadata = new ArrayList<>();
+    loadImplicitAnnotationsFile();
 
     EntrySet fileNode = entrySets.newFileNodeAndEmit(filePositions);
 
@@ -240,7 +244,22 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
     }
 
     scan(compilation.getImports(), ctx);
+
+    emitFileScopeMetadata(fileNode.getVName());
+
     return new JavaNode(fileNode);
+  }
+
+  private void emitFileScopeMetadata(VName file) {
+    for (Metadata data : metadata) {
+      for (Metadata.Rule rule : data.getFileScopeRules()) {
+        if (rule.reverseEdge) {
+          entrySets.emitEdge(rule.vname, rule.edgeOut, file);
+        } else {
+          entrySets.emitEdge(file, rule.edgeOut, rule.vname);
+        }
+      }
+    }
   }
 
   @Override
@@ -1075,7 +1094,13 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
       // related JVM node to accommodate cross-language references.
       Type type = externalType(sym);
       CorpusPath corpusPath = entrySets.jvmCorpusPath(sym);
-      if (type instanceof Type.MethodType) {
+      if (sym instanceof Symbol.VarSymbol) {
+        if (((Symbol.VarSymbol) sym).getKind() == ElementKind.FIELD) {
+          ReferenceType parentClass = referenceType(externalType(sym.enclClass()));
+          String fieldName = sym.getSimpleName().toString();
+          return new JavaNode(JvmGraph.getFieldVName(corpusPath, parentClass, fieldName));
+        }
+      } else if (type instanceof Type.MethodType) {
         JvmGraph.Type.MethodType methodJvmType = toMethodJvmType((Type.MethodType) type);
         ReferenceType parentClass = referenceType(externalType(sym.enclClass()));
         String methodName = sym.getQualifiedName().toString();
@@ -1083,11 +1108,6 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
             JvmGraph.getMethodVName(corpusPath, parentClass, methodName, methodJvmType));
       } else if (type instanceof Type.ClassType) {
         return new JavaNode(JvmGraph.getReferenceVName(corpusPath, referenceType(sym.type)));
-      } else if (sym instanceof Symbol.VarSymbol
-          && ((Symbol.VarSymbol) sym).getKind() == ElementKind.FIELD) {
-        ReferenceType parentClass = referenceType(externalType(sym.enclClass()));
-        String fieldName = sym.getSimpleName().toString();
-        return new JavaNode(JvmGraph.getFieldVName(corpusPath, parentClass, fieldName));
       }
     }
 
@@ -1380,20 +1400,53 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
     URI uri = filePositions.getSourceFile().toUri();
     try {
       String fullPath = resolveSourcePath(path);
+      if (metadataFilePaths.contains(fullPath)) {
+        return;
+      }
       FileObject file = Iterables.getOnlyElement(fileManager.getJavaFileObjects(fullPath), null);
       if (file == null) {
         logger.atWarning().log("Can't find metadata %s for %s at %s", path, uri, fullPath);
         return;
       }
-      InputStream stream = file.openInputStream();
+      loadAnnotationsFile(fullPath, file);
+    } catch (IllegalArgumentException ex) {
+      logger.atWarning().withCause(ex).log("Can't read metadata %s for %s", path, uri);
+    }
+  }
+
+  private void loadAnnotationsFile(String fullPath, FileObject file) {
+    try (InputStream stream = file.openInputStream()) {
       Metadata newMetadata = metadataLoaders.parseFile(fullPath, ByteStreams.toByteArray(stream));
       if (newMetadata == null) {
-        logger.atWarning().log("Can't load metadata %s for %s", path, uri);
+        logger.atWarning().log("Can't load metadata %s", fullPath);
         return;
       }
       metadata.add(newMetadata);
-    } catch (IOException | IllegalArgumentException ex) {
-      logger.atWarning().log("Can't read metadata %s for %s", path, uri);
+      metadataFilePaths.add(fullPath);
+    } catch (IOException ex) {
+      logger.atWarning().withCause(ex).log("Can't read metadata for %s", fullPath);
+    }
+  }
+
+  private void loadImplicitAnnotationsFile() {
+    URI uri = filePositions.getSourceFile().toUri();
+    String name = Paths.get(uri.getPath()).getFileName().toString();
+    try {
+      String fullPath = resolveSourcePath(name + ".pb.meta");
+      if (metadataFilePaths.contains(fullPath)) {
+        return;
+      }
+      FileObject file = Iterables.getOnlyElement(fileManager.getJavaFileObjects(fullPath));
+      // getJavaFileObjects is only guaranteed to check that the path isn't a directory, not whether
+      // it exists.
+      if (file == null || !isFileReadable(file)) {
+        return;
+      }
+      loadAnnotationsFile(fullPath, file);
+    } catch (IllegalArgumentException ex) {
+      // However, in practice it will also raise IllegalArgumentException if the file
+      // does not exist.
+      logger.atFine().withCause(ex).log("Can't read implicit metadata for %s", uri);
     }
   }
 
@@ -1494,6 +1547,15 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
   private static ReferenceType referenceType(Type referent) {
     String qualifiedName = referent.tsym.flatName().toString();
     return JvmGraph.Type.referenceType(qualifiedName);
+  }
+
+  /** Returns true if the FileObject exists and is readable */
+  private static boolean isFileReadable(FileObject file) {
+    try (InputStream stream = file.openInputStream()) {
+      return true;
+    } catch (IOException unused) {
+      return false;
+    }
   }
 
   private static JvmGraph.VoidableType toJvmReturnType(Type type) {

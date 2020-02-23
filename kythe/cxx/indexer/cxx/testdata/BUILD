@@ -1,5 +1,10 @@
 package(default_visibility = ["//kythe:default_visibility"])
 
+exports_files(
+    ["test_vnames.json"],
+    visibility = ["//kythe:default_visibility"],
+)
+
 load(
     "//tools/build_rules/verifier_test:cc_indexer_test.bzl",
     "cc_extractor_test",
@@ -665,6 +670,16 @@ cc_indexer_test(
 cc_indexer_test(
     name = "usr_function",
     srcs = ["basic/usr_function.cc"],
+    check_for_singletons = True,
+    experimental_usr_byte_size = 20,
+    ignore_dups = True,
+    ignore_unimplemented = True,
+    tags = ["basic"],
+)
+
+cc_indexer_test(
+    name = "usr_macro",
+    srcs = ["basic/usr_macro.cc"],
     check_for_singletons = True,
     experimental_usr_byte_size = 20,
     ignore_dups = True,

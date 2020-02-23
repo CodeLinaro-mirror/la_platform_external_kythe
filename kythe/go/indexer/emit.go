@@ -61,6 +61,9 @@ type EmitOptions struct {
 	// If set, use this as the base URL for links to godoc.  The import path is
 	// appended to the path of this URL to obtain the target URL to link to.
 	DocBase *url.URL
+
+	// If true, the doc/uri fact is only emitted for go std library packages.
+	OnlyEmitDocURIsForStandardLibs bool
 }
 
 func (e *EmitOptions) emitMarkedSource() bool {
@@ -87,12 +90,16 @@ func (e *EmitOptions) shouldEmit(vname *spb.VName) bool {
 // docURL returns a documentation URL for the specified package, if one is
 // specified by the options, or "" if not.
 func (e *EmitOptions) docURL(pi *PackageInfo) string {
-	if e != nil && e.DocBase != nil {
-		u := *e.DocBase
-		u.Path = path.Join(u.Path, pi.ImportPath)
-		return u.String()
+	if e == nil || e.DocBase == nil {
+		return ""
 	}
-	return ""
+	if e.OnlyEmitDocURIsForStandardLibs && !govname.IsStandardLibrary(pi.VName) {
+		return ""
+	}
+
+	u := *e.DocBase
+	u.Path = path.Join(u.Path, pi.ImportPath)
+	return u.String()
 }
 
 // An impl records that a type A implements an interface B.
@@ -109,6 +116,7 @@ func (pi *PackageInfo) Emit(ctx context.Context, sink Sink, opts *EmitOptions) e
 		opts:     opts,
 		impl:     make(map[impl]struct{}),
 		anchored: make(map[ast.Node]struct{}),
+		fmeta:    make(map[*ast.File]bool),
 	}
 
 	// Emit a node to represent the package as a whole.
@@ -176,6 +184,7 @@ type emitter struct {
 	opts     *EmitOptions
 	impl     map[impl]struct{}                    // see checkImplements
 	rmap     map[*ast.File]map[int]metadata.Rules // see applyRules
+	fmeta    map[*ast.File]bool                   // see applyRules
 	anchored map[ast.Node]struct{}                // see writeAnchor
 	firstErr error
 	cmap     ast.CommentMap // current file's CommentMap
@@ -933,6 +942,22 @@ func (e *emitter) writeRef(origin ast.Node, target *spb.VName, kind string) *spb
 		} else {
 			e.writeEdge(target, rule.VName, rule.EdgeOut)
 		}
+		if rule.EdgeOut == edges.Generates && !e.fmeta[file] {
+			e.fmeta[file] = true
+			if rule.VName.Path != "" && target.Path != "" {
+				ruleVName := *rule.VName
+				ruleVName.Signature = ""
+				ruleVName.Language = ""
+				fileTarget := *anchor
+				fileTarget.Signature = ""
+				fileTarget.Language = ""
+				if rule.Reverse {
+					e.writeEdge(&ruleVName, &fileTarget, rule.EdgeOut)
+				} else {
+					e.writeEdge(&fileTarget, &ruleVName, rule.EdgeOut)
+				}
+			}
+		}
 	})
 
 	return anchor
@@ -987,7 +1012,9 @@ func (e *emitter) writeBinding(id *ast.Ident, kind string, parent *spb.VName) *s
 
 // writeDef emits a spanning anchor and defines edge for the specified node.
 // This function does not create the target node.
-func (e *emitter) writeDef(node ast.Node, target *spb.VName) { e.writeRef(node, target, edges.Defines) }
+func (e *emitter) writeDef(node ast.Node, target *spb.VName) {
+	e.writeRef(node, target, edges.Defines)
+}
 
 // writeDoc adds associations between comment groups and a documented node.
 // It also handles marking deprecated facts on the target.

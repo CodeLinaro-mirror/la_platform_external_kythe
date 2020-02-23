@@ -300,6 +300,7 @@ cc_library(
         "//kythe/cxx/extractor:supported_language",
         "//third_party/llvm/src:clang_builtin_headers",
         "@com_github_google_glog//:glog",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -435,8 +436,8 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "cmdlib",
+cc_binary(
+    name = "indexer",
     srcs = [
         "KytheIndexerMain.cc",
     ],
@@ -458,37 +459,6 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "indexer",
-    deps = [
-        ":cmdlib",
-    ],
-)
-
-cc_library(
-    name = "testlib",
-    testonly = 1,
-    srcs = [
-        "KytheIndexerUnitTest.cc",
-    ],
-    copts = [
-        "-Wno-non-virtual-dtor",
-        "-Wno-unused-variable",
-        "-Wno-implicit-fallthrough",
-    ],
-    deps = [
-        ":lib",
-        "//kythe/cxx/common/indexing:testlib",
-        "//third_party:gtest",
-        "@com_google_absl//absl/memory",
-        "@com_google_protobuf//:protobuf",
-        "@org_llvm//:LLVMSupport",
-        "@org_llvm//:clangAST",
-        "@org_llvm//:clangFrontend",
-        "@org_llvm//:clangTooling",
-    ],
-)
-
 cc_library(
     name = "node_set",
     hdrs = ["node_set.h"],
@@ -501,12 +471,28 @@ cc_library(
 cc_test(
     name = "test",
     size = "small",
+    srcs = [
+        "KytheIndexerUnitTest.cc",
+    ],
+    copts = [
+        "-Wno-non-virtual-dtor",
+        "-Wno-unused-variable",
+        "-Wno-implicit-fallthrough",
+    ],
     linkopts = select({
         ":darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
-        ":testlib",
+        ":lib",
+        "//kythe/cxx/common/indexing:testlib",
+        "//third_party:gtest",
+        "@com_google_absl//absl/memory",
+        "@com_google_protobuf//:protobuf",
+        "@org_llvm//:LLVMSupport",
+        "@org_llvm//:clangAST",
+        "@org_llvm//:clangFrontend",
+        "@org_llvm//:clangTooling",
     ],
 )
 
