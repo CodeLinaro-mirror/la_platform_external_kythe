@@ -239,10 +239,11 @@ cc_binary_host {
         "libabsl_strings",
         "libabsl_synchronization",
         "libabsl_time",
-        "libprotoc-kythe",
+        "libprotoc",
     ],
     shared_libs: [
         "libbase",
+        "libz",
         "libziparchive",
     ],
     target: {
