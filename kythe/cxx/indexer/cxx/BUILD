@@ -110,6 +110,7 @@ cc_library(
         "//third_party/llvm/src:clang_builtin_headers",
         "@com_github_google_glog//:glog",
         "@org_llvm//:clangAST",
+        "@org_llvm//:clangBasic",
     ],
 )
 
@@ -175,6 +176,8 @@ cc_library(
         "-Wno-implicit-fallthrough",
     ],
     deps = [
+        ":clang_range_finder",
+        ":clang_utils",
         ":graph_observer",
         ":indexed_parent_iterator",
         ":indexed_parent_map",
@@ -182,6 +185,7 @@ cc_library(
         ":kythe_claim_client",
         ":marked_source",
         ":node_set",
+        ":recursive_type_visitor",
         ":semantic_hash",
         ":type_map",
         "//kythe/cxx/common:lib",
@@ -324,6 +328,7 @@ cc_library(
         "-Wno-implicit-fallthrough",
     ],
     deps = [
+        ":clang_range_finder",
         ":clang_utils",
         ":graph_observer",
         ":kythe_claim_client",
@@ -492,6 +497,55 @@ cc_test(
         "@org_llvm//:LLVMSupport",
         "@org_llvm//:clangAST",
         "@org_llvm//:clangFrontend",
+        "@org_llvm//:clangTooling",
+    ],
+)
+
+cc_library(
+    name = "recursive_type_visitor",
+    hdrs = ["recursive_type_visitor.h"],
+    deps = [
+        "@org_llvm//:clangAST",
+    ],
+)
+
+cc_test(
+    name = "recursive_type_visitor_test",
+    srcs = ["recursive_type_visitor_test.cc"],
+    deps = [
+        ":recursive_type_visitor",
+        "//third_party:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "clang_range_finder",
+    srcs = ["clang_range_finder.cc"],
+    hdrs = ["clang_range_finder.h"],
+    deps = [
+        "@com_github_google_glog//:glog",
+        "@org_llvm//:LLVMSupport",
+        "@org_llvm//:clangAST",
+        "@org_llvm//:clangBasic",
+        "@org_llvm//:clangLex",
+    ],
+)
+
+cc_test(
+    name = "clang_range_finder_test",
+    srcs = [
+        "clang_range_finder_test.cc",
+    ],
+    deps = [
+        ":clang_range_finder",
+        "//third_party:gtest_main",
+        "@com_github_google_glog//:glog",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@org_llvm//:LLVMSupport",
+        "@org_llvm//:clangAST",
+        "@org_llvm//:clangFrontend",
+        "@org_llvm//:clangLex",
         "@org_llvm//:clangTooling",
     ],
 )

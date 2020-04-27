@@ -922,6 +922,7 @@ void KytheGraphObserver::assignUsr(const NodeId& node, llvm::StringRef usr,
                       std::min(hash.size(), static_cast<size_t>(byte_size))));
   VNameRef node_vname = VNameRefFromNodeId(node);
   VNameRef usr_vname;
+  usr_vname.set_corpus(type_token_.vname().corpus());
   usr_vname.set_signature(hex);
   usr_vname.set_language("usr");
   recorder_->AddProperty(usr_vname, NodeKindID::kClangUsr);
@@ -1002,6 +1003,15 @@ void KytheGraphObserver::recordTypeSpellingLocation(
   RecordAnchor(type_source_range, type_id,
                i == Implicit::Yes ? EdgeKindID::kRefImplicit : EdgeKindID::kRef,
                claimability);
+}
+
+void KytheGraphObserver::recordTypeIdSpellingLocation(
+    const GraphObserver::Range& type_source_range, const NodeId& type_id,
+    Claimability claimability, Implicit i) {
+  RecordAnchor(
+      type_source_range, type_id,
+      i == Implicit::Yes ? EdgeKindID::kRefImplicit : EdgeKindID::kRefId,
+      claimability);
 }
 
 void KytheGraphObserver::recordCategoryExtendsEdge(const NodeId& from,
@@ -1363,32 +1373,42 @@ const KytheClaimToken* KytheGraphObserver::getAnonymousNamespaceClaimToken(
     CHECK(main_source_file_token_ != nullptr);
     return main_source_file_token_;
   }
-  return getNamespaceClaimToken(loc);
+  return &getNamespaceTokens(loc).anonymous;
 }
 
 const KytheClaimToken* KytheGraphObserver::getNamespaceClaimToken(
     clang::SourceLocation loc) const {
+  return &getNamespaceTokens(loc).named;
+}
+
+const KytheGraphObserver::NamespaceTokens&
+KytheGraphObserver::getNamespaceTokens(clang::SourceLocation loc) const {
   auto* file_token = getClaimTokenForLocation(loc);
-  auto token = namespace_tokens_.find(file_token);
-  if (token != namespace_tokens_.end()) {
-    return &token->second;
+  auto [iter, inserted] =
+      namespace_tokens_.emplace(file_token, NamespaceTokens{});
+  if (inserted) {
+    // Named namespaces belong to the same corpus as structural types due to
+    // their use as extension points which may be opened from a file in any
+    // corpus, but should still refer to the same node.
+    iter->second.named.mutable_vname()->set_corpus(
+        type_token_.vname().corpus());
+    iter->second.named.set_rough_claimed(file_token->rough_claimed());
+    // Anonymous namespaces are unique to the translation in which they're
+    // defined, which we approximate by using the file's corpus.
+    iter->second.anonymous.mutable_vname()->set_corpus(
+        file_token->vname().corpus());
+    iter->second.anonymous.set_rough_claimed(file_token->rough_claimed());
   }
-  proto::VName vname;
-  vname.set_corpus(file_token->vname().corpus());
-  KytheClaimToken new_token;
-  new_token.set_vname(vname);
-  new_token.set_rough_claimed(file_token->rough_claimed());
-  namespace_tokens_.emplace(file_token, new_token);
-  return &namespace_tokens_.find(file_token)->second;
+  return iter->second;
 }
 
 void KytheGraphObserver::RegisterBuiltins() {
   auto RegisterBuiltin = [&](const std::string& name,
                              const MarkedSource& marked_source) {
-    builtins_.emplace(std::make_pair(
-        name, Builtin{NodeId::CreateUncompressed(getDefaultClaimToken(),
-                                                 name + "#builtin"),
-                      marked_source, false}));
+    builtins_.emplace(name,
+                      Builtin{NodeId::CreateUncompressed(getDefaultClaimToken(),
+                                                         name + "#builtin"),
+                              marked_source, false});
   };
   auto RegisterTokenBuiltin = [&](const std::string& name,
                                   const std::string& token) {

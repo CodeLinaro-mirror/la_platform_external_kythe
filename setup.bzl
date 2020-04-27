@@ -7,6 +7,19 @@ def maybe(repo_rule, name, **kwargs):
     if name not in native.existing_rules():
         repo_rule(name = name, **kwargs)
 
+def github_archive(name, repo_name, commit, sha256 = None, kind = "zip"):
+    """Defines a GitHub commit-based repository rule."""
+    project = repo_name[repo_name.index("/"):]
+    http_archive(
+        name = name,
+        sha256 = sha256,
+        strip_prefix = "{project}-{commit}".format(project = project, commit = commit),
+        urls = [u.format(commit = commit, repo_name = repo_name, kind = kind) for u in [
+            "https://mirror.bazel.build/github.com/{repo_name}/archive/{commit}.{kind}",
+            "https://github.com/{repo_name}/archive/{commit}.{kind}",
+        ]],
+    )
+
 def kythe_rule_repositories():
     """Defines external repositories for Kythe Bazel rules.
 
@@ -15,19 +28,18 @@ def kythe_rule_repositories():
     maybe(
         http_archive,
         name = "bazel_skylib",
-        sha256 = "2ea8a5ed2b448baf4a6855d3ce049c4c452a6470b1efd1504fdb7c1c134d220a",
-        strip_prefix = "bazel-skylib-0.8.0",
-        urls = ["https://github.com/bazelbuild/bazel-skylib/archive/0.8.0.tar.gz"],
+        sha256 = "e5d90f0ec952883d56747b7604e2a15ee36e288bb556c3d0ed33e818a4d971f2",
+        strip_prefix = "bazel-skylib-1.0.2",
+        urls = ["https://github.com/bazelbuild/bazel-skylib/archive/1.0.2.tar.gz"],
     )
 
     maybe(
-        http_archive,
+        # TODO(shahms): Update to a release version >= 0.22.2
+        github_archive,
         name = "io_bazel_rules_go",
-        urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.21.3/rules_go-v0.21.3.tar.gz",
-            "https://github.com/bazelbuild/rules_go/releases/download/v0.21.3/rules_go-v0.21.3.tar.gz",
-        ],
-        sha256 = "af04c969321e8f428f63ceb73463d6ea817992698974abeff0161e069cd08bd6",
+        repo_name = "bazelbuild/rules_go",
+        commit = "2a0e3a07e9ed9aa9b7afd1a222638ba52166e52d",
+        sha256 = "9f405b66fa5b2c5317d46ff8b0954a12961736e8e806f665521f96d90a5b58eb",
     )
 
     maybe(
@@ -70,8 +82,8 @@ def kythe_rule_repositories():
     maybe(
         http_archive,
         name = "build_bazel_rules_nodejs",
-        sha256 = "3887b948779431ac443e6a64f31b9e1e17b8d386a31eebc50ec1d9b0a6cabd2b",
-        urls = ["https://github.com/bazelbuild/rules_nodejs/releases/download/1.0.0/rules_nodejs-1.0.0.tar.gz"],
+        sha256 = "d0c4bb8b902c1658f42eb5563809c70a06e46015d64057d25560b0eb4bdc9007",
+        urls = ["https://github.com/bazelbuild/rules_nodejs/releases/download/1.5.0/rules_nodejs-1.5.0.tar.gz"],
     )
 
     maybe(

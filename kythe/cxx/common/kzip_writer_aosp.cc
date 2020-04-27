@@ -35,7 +35,7 @@ bool KzipWriter::HasEncoding(KzipEncoding encoding) {
   return encoding_ == encoding || encoding_ == KzipEncoding::kAll;
 }
 
-Status KzipWriter::WriteTextFile(absl::string_view path,
+absl::Status KzipWriter::WriteTextFile(absl::string_view path,
                                  absl::string_view content) {
   int32_t rc = zip_writer_.StartEntryWithTime(path.data(), ZipWriter::kCompress,
                                               kModTime);
@@ -45,7 +45,7 @@ Status KzipWriter::WriteTextFile(absl::string_view path,
   if (rc == 0) {
     rc = zip_writer_.FinishEntry();
   }
-  return rc ? InternalError(ZipWriter::ErrorCodeString(rc)) : OkStatus();
+  return rc ? absl::InternalError(ZipWriter::ErrorCodeString(rc)) : absl::OkStatus();
 }
 
 int32_t KzipWriter::CreateDirEntry(absl::string_view path) {
@@ -80,7 +80,7 @@ StatusOr<IndexWriter> KzipWriter::Create(absl::string_view path,
                                          KzipEncoding encoding) {
   FILE* fp = fopen(path.data(), "wb");
   if (!fp) {
-    return UnimplementedError(strerror(errno));
+    return absl::UnimplementedError(strerror(errno));
   }
   return IndexWriter(absl::WrapUnique(new KzipWriter(fp, encoding)));
 }
@@ -96,7 +96,7 @@ StatusOr<std::string> KzipWriter::WriteUnit(
     const kythe::proto::IndexedCompilation& unit) {
   int32_t rc = InitializeArchive();
   if (rc) {
-    return InternalError(ZipWriter::ErrorCodeString(rc));
+    return absl::InternalError(ZipWriter::ErrorCodeString(rc));
   }
   auto json = WriteMessageAsJsonToString(unit);
   if (!json) {
@@ -104,7 +104,7 @@ StatusOr<std::string> KzipWriter::WriteUnit(
   }
 
   auto digest = SHA256Digest(*json);
-  StatusOr<std::string> result = InternalError("unsupported encoding");
+  StatusOr<std::string> result = absl::InternalError("unsupported encoding");
   if (HasEncoding(KzipEncoding::kJson)) {
     if (!(result = InsertFile(kJsonUnitRoot, digest, *json))) {
       return result;
@@ -113,7 +113,7 @@ StatusOr<std::string> KzipWriter::WriteUnit(
   if (HasEncoding(KzipEncoding::kProto)) {
     std::string contents;
     if (!unit.SerializeToString(&contents)) {
-      return InternalError("Failure serializing compilation unit");
+      return absl::InternalError("Failure serializing compilation unit");
     }
     result = InsertFile(kProtoUnitRoot, digest, contents);
   }
@@ -123,16 +123,16 @@ StatusOr<std::string> KzipWriter::WriteUnit(
 StatusOr<std::string> KzipWriter::WriteFile(absl::string_view content) {
   int32_t rc = InitializeArchive();
   if (rc) {
-    return InternalError(ZipWriter::ErrorCodeString(rc));
+    return absl::InternalError(ZipWriter::ErrorCodeString(rc));
   }
   return InsertFile(kFileRoot, SHA256Digest(content), content);
 }
 
-Status KzipWriter::Close() {
+absl::Status KzipWriter::Close() {
   int32_t rc = zip_writer_.Finish();
   fclose(fp_);
   fp_ = nullptr;
-  return rc ? InternalError(ZipWriter::ErrorCodeString(rc)) : OkStatus();
+  return rc ? absl::InternalError(ZipWriter::ErrorCodeString(rc)) : absl::OkStatus();
 }
 
 StatusOr<std::string> KzipWriter::InsertFile(absl::string_view dir,

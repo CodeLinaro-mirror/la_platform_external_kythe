@@ -255,7 +255,7 @@ java_verifier_test(
     meta = [
         "Metadata.java.meta",
     ],
-    deps = ["@maven//:javax_annotation_jsr250_api"],
+    deps = ["@maven//:org_apache_tomcat_tomcat_annotations_api"],
 )
 
 java_verifier_test(
@@ -281,7 +281,7 @@ java_verifier_test(
         "ProtobufMetadata.java.pb.meta",
     ],
     vnames_config = "protobuf_vnames.json",
-    deps = ["@maven//:javax_annotation_jsr250_api"],
+    deps = ["@maven//:org_apache_tomcat_tomcat_annotations_api"],
 )
 
 java_verifier_test(
@@ -470,10 +470,7 @@ java_library(
 java_verifier_test(
     name = "cross_file_xa_test",
     compilation = ":cross_file",
-    verifier_opts = [
-        "--ignore_dups",
-        "--nocheck_for_singletons",  # TODO(schroederc): verify Files.java goals
-    ],
+    verifier_deps = [":files_xa_test"],
 )
 
 java_library(

@@ -3,6 +3,7 @@
 
 #include <unordered_set>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "kythe/cxx/common/index_writer.h"
 #include "kythe/cxx/common/kzip_encoding.h"
@@ -33,7 +34,7 @@ class KzipWriter : public IndexWriterInterface {
 
   /// \brief Flushes accumulated writes and closes the kzip file.
   /// Close must be called before the KzipWriter is destroyed!
-  Status Close() override;
+  absl::Status Close() override;
 
  private:
   explicit KzipWriter(FILE* fp, KzipEncoding encoding);
@@ -43,7 +44,7 @@ class KzipWriter : public IndexWriterInterface {
   StatusOr<std::string> InsertFile(absl::string_view dir_name,
                                    absl::string_view content_digest,
                                    absl::string_view content);
-  Status WriteTextFile(absl::string_view name, absl::string_view content);
+  absl::Status WriteTextFile(absl::string_view name, absl::string_view content);
   int32_t InitializeArchive();
   int32_t CreateDirEntry(absl::string_view dir_name);
   bool HasEncoding(KzipEncoding encoding);
