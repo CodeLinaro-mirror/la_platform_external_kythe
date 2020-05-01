@@ -495,7 +495,7 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
       CorpusPath corpusPath = entrySets.jvmCorpusPath(methodDef.sym);
       JvmGraph.Type.MethodType methodJvmType =
           toMethodJvmType((Type.MethodType) externalType(methodDef.sym));
-      ReferenceType parentClass = referenceType(externalType(owner.getTree().type.tsym));
+      ReferenceType parentClass = referenceType(externalType(methodDef.sym.enclClass()));
       String methodName = methodDef.name.toString();
       VName jvmNode = jvmGraph.emitMethodNode(corpusPath, parentClass, methodName, methodJvmType);
       entrySets.emitEdge(methodNode, EdgeKind.GENERATES, jvmNode);
@@ -663,7 +663,7 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
       VName jvmNode =
           jvmGraph.emitFieldNode(
               entrySets.jvmCorpusPath(varDef.sym),
-              referenceType(externalType(owner.getTree().type.tsym)),
+              referenceType(externalType(varDef.sym.enclClass())),
               varDef.name.toString());
       entrySets.emitEdge(varNode, EdgeKind.GENERATES, jvmNode);
     }
@@ -1118,12 +1118,11 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
   }
 
   private boolean isExternal(Symbol sym) {
-    // TODO(schroederc): check if Symbol comes from any source file in compilation
     // TODO(schroederc): research other methods to hueristically determine if a Symbol is defined in
     //                   a Java compilation (vs. some other JVM language)
     ClassSymbol cls = sym.enclClass();
     return cls != null
-        && cls.sourcefile != filePositions.getSourceFile()
+        && (cls.sourcefile == null || cls.sourcefile.getKind() != JavaFileObject.Kind.SOURCE)
         && !JavaEntrySets.fromJDK(sym);
   }
 

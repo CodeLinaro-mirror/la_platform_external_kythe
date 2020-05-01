@@ -976,6 +976,11 @@ kythe::proto::VName CompilationWriter::VNameForPath(const std::string& path) {
 }
 
 std::string CompilationWriter::RelativizePath(absl::string_view path) {
+  // Don't attempt to relativize builtin resource paths.
+  if (absl::StartsWith(path, kBuiltinResourceDirectory)) {
+    return std::string(path);
+  }
+
   if (!canonicalizer_.has_value()) {
     if (StatusOr<PathCanonicalizer> canonicalizer =
             PathCanonicalizer::Create(root_directory_, path_policy_)) {
@@ -1147,6 +1152,11 @@ void CompilationWriter::WriteIndex(
 
   kythe::proto::VName main_vname = VNameForPath(main_source_file);
   *unit_vname = main_vname;
+  if (!corpus_.empty()) {
+    // Use the explicit build corpus as the unit corpus in preference to that of
+    // the primary file.
+    unit_vname->set_corpus(corpus_);
+  }
   unit_vname->set_language(supported_language::ToString(lang));
   unit_vname->clear_path();
 
