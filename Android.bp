@@ -554,7 +554,6 @@ bootstrap_go_package {
     deps: [
         "runextractor-compdb",
         "go-util-flagutil",
-        "go-uuid",
     ],
 }
 
