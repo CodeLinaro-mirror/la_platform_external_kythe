@@ -455,6 +455,13 @@ bootstrap_go_package {
 }
 
 bootstrap_go_package {
+    name: "go-util-cmdutil",
+    pkgPath: "kythe.io/kythe/go/util/cmdutil",
+    srcs: ["kythe/go/util/cmdutil/cmdutil.go"],
+    deps: ["go-subcommands"],
+}
+
+bootstrap_go_package {
     name: "go-util-flagutil",
     pkgPath: "kythe.io/kythe/go/util/flagutil",
     srcs: ["kythe/go/util/flagutil/flagutil.go"],
@@ -512,4 +519,97 @@ blueprint_go_binary {
     ],
     // TODO(asmundak): is there a way to set linker flags
     // (e.g., -ldflags="-s -w" -trimpath
+}
+
+bootstrap_go_package {
+    name: "extractors-config-preprocessor-modifier",
+    pkgPath: "kythe.io/kythe/go/extractors/config/preprocessor/modifier",
+    srcs: [
+        "kythe/go/extractors/config/preprocessor/modifier/build_gradle_modifier.go",
+        "kythe/go/extractors/config/preprocessor/modifier/pom_xml_modifier.go",
+    ],
+    deps: [
+        "go-etree",
+    ],
+}
+
+bootstrap_go_package {
+    name: "extractors-config-runextractor-backup",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/backup",
+    srcs: ["kythe/go/extractors/config/runextractor/backup/backup.go"],
+    deps: ["go-cmp"],
+}
+
+bootstrap_go_package {
+    name: "extractors-constants",
+    pkgPath: "kythe.io/kythe/go/extractors/constants",
+    srcs: ["kythe/go/extractors/constants/constants.go"],
+    deps: [],
+}
+
+bootstrap_go_package {
+    name: "runextractor-cmakecmd",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/cmakecmd",
+    srcs: ["kythe/go/extractors/config/runextractor/cmakecmd/cmakecmd.go"],
+    deps: [
+        "runextractor-compdb",
+        "go-util-flagutil",
+    ],
+}
+
+bootstrap_go_package {
+    name: "runextractor-compdb",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/compdb",
+    srcs: ["kythe/go/extractors/config/runextractor/compdb/compdb.go"],
+    deps: [
+        "creachadair-shell",
+        "go-util-cmdutil",
+        "golang-x-sync-errgroup",
+        "golang-x-sync-semaphore",
+    ],
+}
+
+bootstrap_go_package {
+    name: "runextractor-compdbcmd",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/compdbcmd",
+    srcs: ["kythe/go/extractors/config/runextractor/compdbcmd/compdbcmd.go"],
+    deps: [
+        "runextractor-compdb",
+    ],
+}
+
+bootstrap_go_package {
+    name: "runextractor-gradlecmd",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/gradlecmd",
+    srcs: ["kythe/go/extractors/config/runextractor/gradlecmd/gradlecmd.go"],
+    deps: [
+        "go-util-cmdutil",
+        "extractors-config-preprocessor-modifier",
+        "extractors-config-runextractor-backup",
+        "extractors-constants",
+    ],
+}
+
+bootstrap_go_package {
+    name: "runextractor-mavencmd",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/mavencmd",
+    srcs: ["kythe/go/extractors/config/runextractor/mavencmd/mavencmd.go"],
+    deps: [
+        "go-util-cmdutil",
+        "extractors-config-preprocessor-modifier",
+        "extractors-config-runextractor-backup",
+        "extractors-constants",
+    ],
+}
+
+blueprint_go_binary {
+    name: "runextractor",
+    srcs: ["kythe/go/extractors/config/runextractor/runextractor.go"],
+    deps: [
+        "runextractor-cmakecmd",
+        "runextractor-compdb",
+        "runextractor-compdbcmd",
+        "runextractor-gradlecmd",
+        "runextractor-mavencmd",
+    ],
 }
