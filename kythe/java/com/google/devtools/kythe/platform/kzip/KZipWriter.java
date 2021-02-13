@@ -129,8 +129,6 @@ public final class KZipWriter implements KZip.Writer {
       output.putNextEntry(entry);
       output.write(data);
       output.closeEntry();
-    } else {
-      logger.warning(String.format("Warning: Already wrote %s to kzip.", path));
     }
   }
 

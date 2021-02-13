@@ -37,6 +37,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.Optional;
 
 /**
  * General logic for a javac-based {@link CompilationUnit} extractor.
@@ -59,9 +62,10 @@ import java.util.List;
  * is not set
  */
 public abstract class AbstractJavacWrapper {
+  private static final Logger logger = Logger.getLogger(AbstractJavacWrapper.class.getName());
   public static final String DEFAULT_CORPUS = "kythe";
 
-  protected abstract CompilationDescription processCompilation(
+  protected abstract Collection<CompilationDescription> processCompilation(
       String[] arguments, JavaCompilationUnitExtractor javaCompilationUnitExtractor)
       throws Exception;
 
@@ -90,12 +94,11 @@ public abstract class AbstractJavacWrapper {
                   readEnvironmentVariable("KYTHE_ROOT_DIRECTORY"));
         }
 
-        CompilationDescription indexInfo =
+        Collection<CompilationDescription> indexInfos =
             processCompilation(getCleanedUpArguments(args), extractor);
-        outputIndexInfo(indexInfo);
+        outputIndexInfo(indexInfos);
 
-        CompilationUnit compilationUnit = indexInfo.getCompilationUnit();
-        if (compilationUnit.getHasCompileErrors()) {
+        if (indexInfos.stream().anyMatch(cd -> cd.getCompilationUnit().getHasCompileErrors())) {
           System.err.println("Errors encountered during compilation");
           System.exit(1);
         }
@@ -113,11 +116,12 @@ public abstract class AbstractJavacWrapper {
     }
   }
 
-  private static void outputIndexInfo(CompilationDescription indexInfo) throws IOException {
+  private static void outputIndexInfo(Collection<CompilationDescription> indexInfos)
+      throws IOException {
     String outputFile = System.getenv("KYTHE_OUTPUT_FILE");
     if (!Strings.isNullOrEmpty(outputFile)) {
       if (outputFile.endsWith(IndexInfoUtils.KZIP_FILE_EXT)) {
-        IndexInfoUtils.writeKzipToFile(indexInfo, outputFile);
+        IndexInfoUtils.writeKzipToFile(indexInfos, outputFile);
       } else {
         System.err.printf("Unsupported output file: %s%n", outputFile);
         System.exit(2);
@@ -128,16 +132,18 @@ public abstract class AbstractJavacWrapper {
     String outputDir = readEnvironmentVariable("KYTHE_OUTPUT_DIRECTORY");
     // Just rely on the underlying compilation unit's signature to get the filename, if we're not
     // writing to a single kzip file.
-    String name =
-        indexInfo
-            .getCompilationUnit()
-            .getVName()
-            .getSignature()
-            .trim()
-            .replaceAll("^/+|/+$", "")
-            .replace('/', '_');
-    String path = IndexInfoUtils.getKzipPath(outputDir, name).toString();
-    IndexInfoUtils.writeKzipToFile(indexInfo, path);
+    for (CompilationDescription indexInfo : indexInfos) {
+      String name =
+          indexInfo
+              .getCompilationUnit()
+              .getVName()
+              .getSignature()
+              .trim()
+              .replaceAll("^/+|/+$", "")
+              .replace('/', '_');
+      String path = IndexInfoUtils.getKzipPath(outputDir, name).toString();
+      IndexInfoUtils.writeKzipToFile(indexInfo, path);
+    }
   }
 
   private static String[] getCleanedUpArguments(String[] args) throws IOException {
@@ -208,6 +214,18 @@ public abstract class AbstractJavacWrapper {
   }
 
   static String readEnvironmentVariable(String variableName, String defaultValue) {
+    return tryReadEnvironmentVariable(variableName)
+        .orElseGet(
+            () -> {
+              if (Strings.isNullOrEmpty(defaultValue)) {
+                System.err.printf("Missing environment variable: %s%n", variableName);
+                System.exit(1);
+              }
+              return defaultValue;
+            });
+  }
+
+  static Optional<String> tryReadEnvironmentVariable(String variableName) {
     // First see if we have a system property.
     String result = System.getProperty(variableName);
     if (Strings.isNullOrEmpty(result)) {
@@ -215,13 +233,22 @@ public abstract class AbstractJavacWrapper {
       result = System.getenv(variableName);
     }
     if (Strings.isNullOrEmpty(result)) {
-      if (Strings.isNullOrEmpty(defaultValue)) {
-        System.err.printf("Missing environment variable: %s%n", variableName);
-        System.exit(1);
-      }
-      result = defaultValue;
+      return Optional.empty();
     }
-    return result;
+    return Optional.of(result);
+  }
+
+  static Optional<Integer> readSourcesBatchSize() {
+    return tryReadEnvironmentVariable("KYTHE_JAVA_SOURCE_BATCH_SIZE")
+        .map(
+            s -> {
+              try {
+                return Integer.parseInt(s);
+              } catch (NumberFormatException err) {
+                logger.log(Level.WARNING, "Invalid KYTHE_JAVA_SOURCE_BATCH_SIZE", err);
+                return null;
+              }
+            });
   }
 
   protected static List<String> getSourceList(Collection<File> files) {
