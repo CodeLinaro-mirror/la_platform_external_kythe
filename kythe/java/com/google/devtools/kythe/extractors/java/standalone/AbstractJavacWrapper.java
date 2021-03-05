@@ -25,6 +25,7 @@ import com.google.common.collect.Ordering;
 import com.google.common.hash.Hashing;
 import com.google.devtools.kythe.extractors.java.JavaCompilationUnitExtractor;
 import com.google.devtools.kythe.extractors.shared.CompilationDescription;
+import com.google.devtools.kythe.extractors.shared.EnvironmentUtils;
 import com.google.devtools.kythe.extractors.shared.FileVNames;
 import com.google.devtools.kythe.extractors.shared.IndexInfoUtils;
 import com.google.devtools.kythe.proto.Analysis.CompilationUnit;
@@ -49,8 +50,8 @@ import java.util.Optional;
  * <p>KYTHE_VNAMES: optional path to a JSON configuration file for {@link FileVNames} to populate
  * the {@link CompilationUnit}'s required input {@link VName}s
  *
- * <p>KYTHE_CORPUS: if KYTHE_VNAMES is not given, all {@link VName}s will be populated with this
- * corpus (default {@link DEFAULT_CORPUS})
+ * <p>KYTHE_CORPUS: if a vname generated via KYTHE_VNAMES does not provide a corpus, the {@link
+ * VName} will be populated with this corpus (default {@link EnvironmentUtils.DEFAULT_CORPUS})
  *
  * <p>KYTHE_ROOT_DIRECTORY: required root path for file inputs; the {@link FileData} paths stored in
  * the {@link CompilationUnit} will be made to be relative to this directory
@@ -63,7 +64,6 @@ import java.util.Optional;
  */
 public abstract class AbstractJavacWrapper {
   private static final Logger logger = Logger.getLogger(AbstractJavacWrapper.class.getName());
-  public static final String DEFAULT_CORPUS = "kythe";
 
   protected abstract Collection<CompilationDescription> processCompilation(
       String[] arguments, JavaCompilationUnitExtractor javaCompilationUnitExtractor)
@@ -80,18 +80,18 @@ public abstract class AbstractJavacWrapper {
     JsonUtil.usingTypeRegistry(JsonUtil.JSON_TYPE_REGISTRY);
     try {
       if (!passThroughIfAnalysisOnly(args)) {
-        String vnamesConfig = System.getenv("KYTHE_VNAMES");
+        Optional<String> vnamesConfig = EnvironmentUtils.tryReadEnvironmentVariable("KYTHE_VNAMES");
         JavaCompilationUnitExtractor extractor;
-        if (Strings.isNullOrEmpty(vnamesConfig)) {
-          String corpus = readEnvironmentVariable("KYTHE_CORPUS", DEFAULT_CORPUS);
+        if (!vnamesConfig.isPresent()) {
+          String corpus = EnvironmentUtils.defaultCorpus();
           extractor =
               new JavaCompilationUnitExtractor(
-                  corpus, readEnvironmentVariable("KYTHE_ROOT_DIRECTORY"));
+                  corpus, EnvironmentUtils.readEnvironmentVariable("KYTHE_ROOT_DIRECTORY"));
         } else {
           extractor =
               new JavaCompilationUnitExtractor(
-                  FileVNames.fromFile(vnamesConfig),
-                  readEnvironmentVariable("KYTHE_ROOT_DIRECTORY"));
+                  FileVNames.fromFile(vnamesConfig.get()),
+                  EnvironmentUtils.readEnvironmentVariable("KYTHE_ROOT_DIRECTORY"));
         }
 
         Collection<CompilationDescription> indexInfos =
@@ -129,7 +129,7 @@ public abstract class AbstractJavacWrapper {
       return;
     }
 
-    String outputDir = readEnvironmentVariable("KYTHE_OUTPUT_DIRECTORY");
+    String outputDir = EnvironmentUtils.readEnvironmentVariable("KYTHE_OUTPUT_DIRECTORY");
     // Just rely on the underlying compilation unit's signature to get the filename, if we're not
     // writing to a single kzip file.
     for (CompilationDescription indexInfo : indexInfos) {
@@ -209,37 +209,8 @@ public abstract class AbstractJavacWrapper {
     return lst == null ? Collections.<String>emptyList() : Splitter.on(',').splitToList(lst);
   }
 
-  static String readEnvironmentVariable(String variableName) {
-    return readEnvironmentVariable(variableName, null);
-  }
-
-  static String readEnvironmentVariable(String variableName, String defaultValue) {
-    return tryReadEnvironmentVariable(variableName)
-        .orElseGet(
-            () -> {
-              if (Strings.isNullOrEmpty(defaultValue)) {
-                System.err.printf("Missing environment variable: %s%n", variableName);
-                System.exit(1);
-              }
-              return defaultValue;
-            });
-  }
-
-  static Optional<String> tryReadEnvironmentVariable(String variableName) {
-    // First see if we have a system property.
-    String result = System.getProperty(variableName);
-    if (Strings.isNullOrEmpty(result)) {
-      // Fall back to the environment variable.
-      result = System.getenv(variableName);
-    }
-    if (Strings.isNullOrEmpty(result)) {
-      return Optional.empty();
-    }
-    return Optional.of(result);
-  }
-
   static Optional<Integer> readSourcesBatchSize() {
-    return tryReadEnvironmentVariable("KYTHE_JAVA_SOURCE_BATCH_SIZE")
+    return EnvironmentUtils.tryReadEnvironmentVariable("KYTHE_JAVA_SOURCE_BATCH_SIZE")
         .map(
             s -> {
               try {
