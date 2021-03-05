@@ -13,6 +13,7 @@ java_binary(
         ":abstract_javac_wrapper",
         "//kythe/java/com/google/devtools/kythe/extractors/java",
         "//kythe/java/com/google/devtools/kythe/extractors/shared",
+        "//kythe/java/com/google/devtools/kythe/extractors/shared:environment",
         "//kythe/proto:storage_java_proto",
         "//third_party/guava",
         "//third_party/javac",
@@ -28,6 +29,7 @@ java_binary(
         ":abstract_javac_wrapper",
         "//kythe/java/com/google/devtools/kythe/extractors/java",
         "//kythe/java/com/google/devtools/kythe/extractors/shared",
+        "//kythe/java/com/google/devtools/kythe/extractors/shared:environment",
         "//kythe/proto:storage_java_proto",
         "//third_party/guava",
         "//third_party/javac:javac9",
@@ -40,6 +42,7 @@ java_library(
     deps = [
         "//kythe/java/com/google/devtools/kythe/extractors/java",
         "//kythe/java/com/google/devtools/kythe/extractors/shared",
+        "//kythe/java/com/google/devtools/kythe/extractors/shared:environment",
         "//kythe/java/com/google/devtools/kythe/extractors/shared:file_vnames",
         "//kythe/java/com/google/devtools/kythe/util:json",
         "//kythe/proto:analysis_java_proto",
