@@ -530,11 +530,11 @@ std::string ExtractorPPCallbacks::FixStdinPath(const clang::FileEntry* file,
                                                const std::string& in_path) {
   if (in_path == "-" || in_path == "<stdin>") {
     if (main_source_file_stdin_alternate_->empty()) {
-      const llvm::MemoryBuffer* buffer =
-          source_manager_->getMemoryBufferForFile(file);
+      const llvm::MemoryBufferRef buffer =
+          source_manager_->getMemoryBufferForFileOrFake(file);
       std::string hashed_name =
-          Sha256(buffer->getBufferStart(),
-                 buffer->getBufferEnd() - buffer->getBufferStart());
+          Sha256(buffer.getBufferStart(),
+                 buffer.getBufferEnd() - buffer.getBufferStart());
       *main_source_file_stdin_alternate_ = "<stdin:" + hashed_name + ">";
     }
     return *main_source_file_stdin_alternate_;
@@ -547,10 +547,10 @@ void ExtractorPPCallbacks::AddFile(const clang::FileEntry* file,
   std::string path = FixStdinPath(file, in_path);
   auto contents = source_files_->insert({in_path, SourceFile{""}});
   if (contents.second) {
-    const llvm::MemoryBuffer* buffer =
-        source_manager_->getMemoryBufferForFile(file);
-    contents.first->second.file_content.assign(buffer->getBufferStart(),
-                                               buffer->getBufferEnd());
+    const llvm::MemoryBufferRef buffer =
+        source_manager_->getMemoryBufferForFileOrFake(file);
+    contents.first->second.file_content.assign(buffer.getBufferStart(),
+                                               buffer.getBufferEnd());
     contents.first->second.vname.CopyFrom(
         index_writer_->VNameForPath(index_writer_->RelativizePath(path)));
     VLOG(1) << "added content for " << path << ": mapped to "
@@ -1218,15 +1218,36 @@ std::unique_ptr<clang::FrontendAction> NewExtractor(
   return absl::make_unique<ExtractorAction>(index_writer, std::move(callback));
 }
 
-void MapCompilerResources(clang::tooling::ToolInvocation* invocation,
-                          const char* map_directory) {
-  llvm::StringRef map_directory_ref(map_directory);
+llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> MapCompilerResources(
+    llvm::StringRef map_directory) {
+  llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> memory_fs(
+      new llvm::vfs::InMemoryFileSystem);
   for (const auto* file = builtin_headers_create(); file->name; ++file) {
-    llvm::SmallString<1024> out_path = map_directory_ref;
+    llvm::SmallString<1024> out_path = map_directory;
     llvm::sys::path::append(out_path, "include");
     llvm::sys::path::append(out_path, file->name);
-    invocation->mapVirtualFile(out_path, file->data);
+    memory_fs->addFile(out_path, 0,
+                       llvm::MemoryBuffer::getMemBuffer(file->data));
   }
+  return memory_fs;
+}
+
+llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayCompilerResources(
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> root_fs,
+    llvm::StringRef map_directory) {
+  llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> overlay_fs(
+      new llvm::vfs::OverlayFileSystem(std::move(root_fs)));
+  overlay_fs->pushOverlay(MapCompilerResources(kBuiltinResourceDirectory));
+  return overlay_fs;
+}
+
+llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> GetRootFileSystem(
+    bool map_builtin_resources) {
+  if (map_builtin_resources) {
+    return OverlayCompilerResources(llvm::vfs::getRealFileSystem(),
+                                    kBuiltinResourceDirectory);
+  }
+  return llvm::vfs::getRealFileSystem();
 }
 
 void ExtractorConfiguration::SetVNameConfig(const std::string& path) {
@@ -1367,7 +1388,8 @@ bool ExtractorConfiguration::Extract(
   llvm::IntrusiveRefCntPtr<clang::FileManager> file_manager(
       new clang::FileManager(
           file_system_options_,
-          new RecordingFS(llvm::vfs::getRealFileSystem(), &index_writer_)));
+          new RecordingFS(GetRootFileSystem(map_builtin_resources_),
+                          &index_writer_)));
   index_writer_.set_target_name(target_name_);
   index_writer_.set_rule_type(rule_type_);
   index_writer_.set_build_config(build_config_);
@@ -1385,9 +1407,6 @@ bool ExtractorConfiguration::Extract(
       });
   clang::tooling::ToolInvocation invocation(final_args_, std::move(extractor),
                                             file_manager.get());
-  if (map_builtin_resources_) {
-    MapCompilerResources(&invocation, kBuiltinResourceDirectory);
-  }
   return invocation.run();
 }
 
