@@ -1,0 +1,408 @@
+// Automatically generated with:
+// go2bp -rewrite github.com/google/go-cmp/cmp=go-cmp -rewrite google.golang.org/protobuf=golang-protobuf -rewrite github.com/beevik/etree=go-etree -rewrite bitbucket.org/creachadair=creachadair -rewrite github.com/google/subcommands=go-subcommands -rewrite golang.org/x=golang-x -rewrite kythe.io/kythe=kythe -rewrite gotool=go_extractor -limit kythe.io/kythe/go/extractors/config/runextractor -limit kythe.io/kythe/go/extractors/cmd/gotool -skip-tests
+
+blueprint_go_binary {
+    name: "go_extractor",
+    deps: [
+        "kythe-go-extractors-golang",
+        "kythe-go-platform-analysis",
+        "kythe-go-platform-kzip",
+        "kythe-go-platform-vfs",
+        "kythe-go-util-flagutil",
+        "kythe-go-util-vnameutil",
+        "kythe-proto-analysis_go_proto",
+    ],
+    srcs: [
+        "kythe/go/extractors/cmd/gotool/gotool.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-extractors-config-preprocessor-modifier",
+    pkgPath: "kythe.io/kythe/go/extractors/config/preprocessor/modifier",
+    deps: [
+        "go-etree",
+    ],
+    srcs: [
+        "kythe/go/extractors/config/preprocessor/modifier/build_gradle_modifier.go",
+        "kythe/go/extractors/config/preprocessor/modifier/pom_xml_modifier.go",
+    ],
+}
+
+blueprint_go_binary {
+    name: "runextractor",
+    deps: [
+        "go-subcommands",
+        "kythe-go-extractors-config-runextractor-cmakecmd",
+        "kythe-go-extractors-config-runextractor-compdbcmd",
+        "kythe-go-extractors-config-runextractor-gradlecmd",
+        "kythe-go-extractors-config-runextractor-mavencmd",
+    ],
+    srcs: [
+        "kythe/go/extractors/config/runextractor/runextractor.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-extractors-config-runextractor-backup",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/backup",
+    deps: [
+        "go-cmp",
+    ],
+    srcs: [
+        "kythe/go/extractors/config/runextractor/backup/backup.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-extractors-config-runextractor-cmakecmd",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/cmakecmd",
+    deps: [
+        "go-subcommands",
+        "kythe-go-extractors-config-runextractor-compdb",
+        "kythe-go-util-cmdutil",
+        "kythe-go-util-flagutil",
+    ],
+    srcs: [
+        "kythe/go/extractors/config/runextractor/cmakecmd/cmakecmd.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-extractors-config-runextractor-compdb",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/compdb",
+    deps: [
+        "creachadair-shell",
+        "golang-x-sync-semaphore",
+    ],
+    srcs: [
+        "kythe/go/extractors/config/runextractor/compdb/compdb.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-extractors-config-runextractor-compdbcmd",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/compdbcmd",
+    deps: [
+        "go-subcommands",
+        "kythe-go-extractors-config-runextractor-compdb",
+        "kythe-go-util-cmdutil",
+    ],
+    srcs: [
+        "kythe/go/extractors/config/runextractor/compdbcmd/compdbcmd.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-extractors-config-runextractor-gradlecmd",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/gradlecmd",
+    deps: [
+        "go-subcommands",
+        "kythe-go-extractors-config-preprocessor-modifier",
+        "kythe-go-extractors-config-runextractor-backup",
+        "kythe-go-extractors-constants",
+        "kythe-go-util-cmdutil",
+    ],
+    srcs: [
+        "kythe/go/extractors/config/runextractor/gradlecmd/gradlecmd.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-extractors-config-runextractor-mavencmd",
+    pkgPath: "kythe.io/kythe/go/extractors/config/runextractor/mavencmd",
+    deps: [
+        "go-subcommands",
+        "kythe-go-extractors-config-preprocessor-modifier",
+        "kythe-go-extractors-config-runextractor-backup",
+        "kythe-go-extractors-constants",
+        "kythe-go-util-cmdutil",
+    ],
+    srcs: [
+        "kythe/go/extractors/config/runextractor/mavencmd/mavencmd.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-extractors-constants",
+    pkgPath: "kythe.io/kythe/go/extractors/constants",
+    srcs: [
+        "kythe/go/extractors/constants/constants.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-extractors-golang",
+    pkgPath: "kythe.io/kythe/go/extractors/golang",
+    deps: [
+        "creachadair-stringset",
+        "golang-protobuf-types-known-anypb",
+        "kythe-go-extractors-govname",
+        "kythe-go-platform-analysis",
+        "kythe-go-platform-kindex",
+        "kythe-go-platform-vfs",
+        "kythe-go-util-ptypes",
+        "kythe-proto-analysis_go_proto",
+        "kythe-proto-go_go_proto",
+        "kythe-proto-storage_go_proto",
+    ],
+    srcs: [
+        "kythe/go/extractors/golang/golang.go",
+        "kythe/go/extractors/golang/packages.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-extractors-govname",
+    pkgPath: "kythe.io/kythe/go/extractors/govname",
+    deps: [
+        "golang-x-tools-go-vcs",
+        "kythe-go-util-vnameutil",
+        "kythe-proto-storage_go_proto",
+    ],
+    srcs: [
+        "kythe/go/extractors/govname/govname.go",
+        "kythe/go/extractors/govname/types.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-platform-analysis",
+    pkgPath: "kythe.io/kythe/go/platform/analysis",
+    deps: [
+        "golang-protobuf-proto",
+        "kythe-proto-analysis_go_proto",
+        "kythe-proto-storage_go_proto",
+    ],
+    srcs: [
+        "kythe/go/platform/analysis/analysis.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-platform-delimited",
+    pkgPath: "kythe.io/kythe/go/platform/delimited",
+    deps: [
+        "golang-protobuf-proto",
+    ],
+    srcs: [
+        "kythe/go/platform/delimited/copy.go",
+        "kythe/go/platform/delimited/delimited.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-platform-kcd",
+    pkgPath: "kythe.io/kythe/go/platform/kcd",
+    srcs: [
+        "kythe/go/platform/kcd/kcd.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-platform-kcd-kythe",
+    pkgPath: "kythe.io/kythe/go/platform/kcd/kythe",
+    deps: [
+        "golang-protobuf-encoding-protojson",
+        "golang-protobuf-proto",
+        "kythe-go-platform-kcd",
+        "kythe-go-util-ptypes",
+        "kythe-proto-analysis_go_proto",
+        "kythe-proto-buildinfo_go_proto",
+        "kythe-proto-storage_go_proto",
+    ],
+    srcs: [
+        "kythe/go/platform/kcd/kythe/units.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-platform-kindex",
+    pkgPath: "kythe.io/kythe/go/platform/kindex",
+    deps: [
+        "golang-protobuf-proto",
+        "kythe-go-platform-analysis",
+        "kythe-go-platform-delimited",
+        "kythe-go-platform-vfs",
+        "kythe-go-util-ptypes",
+        "kythe-proto-analysis_go_proto",
+        "kythe-proto-storage_go_proto",
+    ],
+    srcs: [
+        "kythe/go/platform/kindex/kindex.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-platform-kzip",
+    pkgPath: "kythe.io/kythe/go/platform/kzip",
+    deps: [
+        "creachadair-stringset",
+        "golang-x-sync-errgroup",
+        "golang-protobuf-encoding-protojson",
+        "golang-protobuf-proto",
+        "kythe-go-platform-kcd-kythe",
+        "kythe-proto-analysis_go_proto",
+        "kythe-proto-buildinfo_go_proto",
+        "kythe-proto-cxx_go_proto",
+        "kythe-proto-filecontext_go_proto",
+        "kythe-proto-go_go_proto",
+        "kythe-proto-java_go_proto",
+    ],
+    srcs: [
+        "kythe/go/platform/kzip/kzip.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-platform-vfs",
+    pkgPath: "kythe.io/kythe/go/platform/vfs",
+    srcs: [
+        "kythe/go/platform/vfs/vfs.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-util-build",
+    pkgPath: "kythe.io/kythe/go/util/build",
+    srcs: [
+        "kythe/go/util/build/build.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-util-cmdutil",
+    pkgPath: "kythe.io/kythe/go/util/cmdutil",
+    deps: [
+        "go-subcommands",
+    ],
+    srcs: [
+        "kythe/go/util/cmdutil/cmdutil.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-util-flagutil",
+    pkgPath: "kythe.io/kythe/go/util/flagutil",
+    deps: [
+        "creachadair-stringset",
+        "kythe-go-util-build",
+    ],
+    srcs: [
+        "kythe/go/util/flagutil/flagutil.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-util-ptypes",
+    pkgPath: "kythe.io/kythe/go/util/ptypes",
+    deps: [
+        "golang-protobuf-proto",
+        "golang-protobuf-types-known-anypb",
+    ],
+    srcs: [
+        "kythe/go/util/ptypes/ptypes.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-go-util-vnameutil",
+    pkgPath: "kythe.io/kythe/go/util/vnameutil",
+    deps: [
+        "golang-protobuf-encoding-protojson",
+        "golang-protobuf-proto",
+        "kythe-proto-storage_go_proto",
+    ],
+    srcs: [
+        "kythe/go/util/vnameutil/order.go",
+        "kythe/go/util/vnameutil/rewrite.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-proto-analysis_go_proto",
+    pkgPath: "kythe.io/kythe/proto/analysis_go_proto",
+    deps: [
+        "golang-protobuf-reflect-protoreflect",
+        "golang-protobuf-runtime-protoimpl",
+        "golang-protobuf-types-known-anypb",
+        "golang-protobuf-types-known-timestamppb",
+        "kythe-proto-storage_go_proto",
+    ],
+    srcs: [
+        "kythe/proto/analysis_go_proto/analysis.pb.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-proto-buildinfo_go_proto",
+    pkgPath: "kythe.io/kythe/proto/buildinfo_go_proto",
+    deps: [
+        "golang-protobuf-reflect-protoreflect",
+        "golang-protobuf-runtime-protoimpl",
+    ],
+    srcs: [
+        "kythe/proto/buildinfo_go_proto/buildinfo.pb.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-proto-cxx_go_proto",
+    pkgPath: "kythe.io/kythe/proto/cxx_go_proto",
+    deps: [
+        "golang-protobuf-reflect-protoreflect",
+        "golang-protobuf-runtime-protoimpl",
+    ],
+    srcs: [
+        "kythe/proto/cxx_go_proto/cxx.pb.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-proto-filecontext_go_proto",
+    pkgPath: "kythe.io/kythe/proto/filecontext_go_proto",
+    deps: [
+        "golang-protobuf-reflect-protoreflect",
+        "golang-protobuf-runtime-protoimpl",
+    ],
+    srcs: [
+        "kythe/proto/filecontext_go_proto/filecontext.pb.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-proto-go_go_proto",
+    pkgPath: "kythe.io/kythe/proto/go_go_proto",
+    deps: [
+        "golang-protobuf-reflect-protoreflect",
+        "golang-protobuf-runtime-protoimpl",
+    ],
+    srcs: [
+        "kythe/proto/go_go_proto/go.pb.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-proto-java_go_proto",
+    pkgPath: "kythe.io/kythe/proto/java_go_proto",
+    deps: [
+        "golang-protobuf-reflect-protoreflect",
+        "golang-protobuf-runtime-protoimpl",
+        "kythe-proto-storage_go_proto",
+    ],
+    srcs: [
+        "kythe/proto/java_go_proto/java.pb.go",
+    ],
+}
+
+bootstrap_go_package {
+    name: "kythe-proto-storage_go_proto",
+    pkgPath: "kythe.io/kythe/proto/storage_go_proto",
+    deps: [
+        "golang-protobuf-reflect-protoreflect",
+        "golang-protobuf-runtime-protoimpl",
+    ],
+    srcs: [
+        "kythe/proto/storage_go_proto/storage.pb.go",
+    ],
+}

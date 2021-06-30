@@ -51,7 +51,7 @@ import (
 	"kythe.io/kythe/go/platform/vfs"
 	"kythe.io/kythe/go/util/ptypes"
 
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 
 	apb "kythe.io/kythe/proto/analysis_go_proto"
 	spb "kythe.io/kythe/proto/storage_go_proto"
@@ -144,15 +144,15 @@ func (c *Compilation) WriteTo(w io.Writer) (int64, error) {
 	}
 	dw := delimited.NewWriter(gz)
 
-	buf := proto.NewBuffer(nil)
-	if err := buf.Marshal(c.Proto); err != nil {
+	buf, err := proto.Marshal(c.Proto)
+	if err != nil {
 		gz.Close()
 		return 0, fmt.Errorf("marshalling compilation: %v", err)
 	}
 
 	var total int64
 
-	nw, err := dw.WriteRecord(buf.Bytes())
+	nw, err := dw.WriteRecord(buf)
 	total += int64(nw)
 	if err != nil {
 		gz.Close()
@@ -160,12 +160,12 @@ func (c *Compilation) WriteTo(w io.Writer) (int64, error) {
 	}
 
 	for _, file := range c.Files {
-		buf.Reset()
-		if err := buf.Marshal(file); err != nil {
+		buf, err := proto.Marshal(file)
+		if err != nil {
 			gz.Close()
 			return total, fmt.Errorf("marshaling file data: %v", err)
 		}
-		nw, err := dw.WriteRecord(buf.Bytes())
+		nw, err := dw.WriteRecord(buf)
 		total += int64(nw)
 		if err != nil {
 			gz.Close()
