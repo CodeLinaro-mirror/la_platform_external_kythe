@@ -62,7 +62,9 @@ _INDEXER_FLAGS = {
     "experimental_drop_cpp_fwd_decl_docs": False,
     "experimental_drop_instantiation_independent_data": False,
     "experimental_drop_objc_fwd_class_docs": False,
+    "experimental_record_dataflow_edges": False,
     "experimental_usr_byte_size": 0,
+    "template_instance_exclude_path_pattern": "",
     "fail_on_unimplemented_builtin": True,
     "ignore_unimplemented": False,
     "index_template_instantiations": True,
@@ -244,8 +246,17 @@ _cc_kythe_proto_library_aspect = aspect(
         "_cc_toolchain": attr.label(
             default = Label("@bazel_tools//tools/cpp:current_cc_toolchain"),
         ),
+        # Attribute to make importing easier as the internal API requires this parameter.
+        # Unused externally.
+        "_grep_includes": attr.label(
+            allow_single_file = True,
+            executable = True,
+            cfg = "host",
+            default = Label("//tools/cpp:grep-includes"),
+        ),
     },
     fragments = ["cpp"],
+    incompatible_use_toolchain_transition = True,
     toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
     implementation = _cc_kythe_proto_library_aspect_impl,
 )
@@ -587,7 +598,7 @@ def _cc_index_impl(ctx):
     sources = [depset([src for src in ctx.files.srcs if src.extension != "kzip"])]
     for dep in ctx.attr.srcs:
         if KytheVerifierSources in dep:
-            sources += [dep[KytheVerifierSources].files]
+            sources.append(dep[KytheVerifierSources].files)
     return [
         KytheVerifierSources(files = depset(transitive = sources)),
         KytheEntries(compressed = depset([ctx.outputs.entries]), files = entries),

@@ -10,8 +10,8 @@ third_party {
   }
   url {
     type: GIT
-    value: "https://github.googlesource.com/kythe/kythe"
+    value: "https://github.com/kythe/kythe"
   }
-  version: "0.44"
-  last_upgrade_date { year: 2020 month: 04 day: 27 }
+  version: "v0.0.52"
+  last_upgrade_date { year: 2021 month: 06 day: 29 }
 }

@@ -239,6 +239,14 @@ class KytheGraphObserver : public GraphObserver {
                              GraphObserver::Claimability cl,
                              GraphObserver::Implicit i) override;
 
+  void recordBlameLocation(const Range& source_range, const NodeId& blame,
+                           GraphObserver::Claimability cl,
+                           GraphObserver::Implicit i) override;
+
+  void recordSemanticDeclUseLocation(const Range& SourceRange,
+                                     const NodeId& DeclId, UseKind K,
+                                     Claimability Cl, Implicit I) override;
+
   void recordInitLocation(const Range& source_range, const NodeId& node,
                           GraphObserver::Claimability cl,
                           GraphObserver::Implicit i) override;
@@ -295,6 +303,9 @@ class KytheGraphObserver : public GraphObserver {
                          const NodeId& parent_id) override;
 
   void recordTypeEdge(const NodeId& term_id, const NodeId& type_id) override;
+
+  void recordInfluences(const NodeId& influencer,
+                        const NodeId& influenced) override;
 
   void recordUpperBoundEdge(const NodeId& TypeNodeId,
                             const NodeId& TypeBoundNodeId) override;

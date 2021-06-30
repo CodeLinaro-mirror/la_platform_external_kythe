@@ -6,7 +6,9 @@
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
+#include "glog/logging.h"
 #include "kythe/cxx/common/json_proto.h"
 #include "kythe/proto/analysis.pb.h"
 
@@ -76,8 +78,8 @@ int32_t KzipWriter::InitializeArchive() {
 }
 
 /* static */
-StatusOr<IndexWriter> KzipWriter::Create(absl::string_view path,
-                                         KzipEncoding encoding) {
+absl::StatusOr<IndexWriter> KzipWriter::Create(absl::string_view path,
+                                               KzipEncoding encoding) {
   FILE* fp = fopen(path.data(), "wb");
   if (!fp) {
     return absl::UnimplementedError(strerror(errno));
@@ -92,21 +94,21 @@ KzipWriter::~KzipWriter() {
   DCHECK(fp_ == nullptr) << "KzipWriterAosp::Close was not called!";
 }
 
-StatusOr<std::string> KzipWriter::WriteUnit(
+absl::StatusOr<std::string> KzipWriter::WriteUnit(
     const kythe::proto::IndexedCompilation& unit) {
   int32_t rc = InitializeArchive();
   if (rc) {
     return absl::InternalError(ZipWriter::ErrorCodeString(rc));
   }
   auto json = WriteMessageAsJsonToString(unit);
-  if (!json) {
+  if (!json.ok()) {
     return json.status();
   }
 
   auto digest = SHA256Digest(*json);
-  StatusOr<std::string> result = absl::InternalError("unsupported encoding");
+  absl::StatusOr<std::string> result = absl::InternalError("unsupported encoding");
   if (HasEncoding(KzipEncoding::kJson)) {
-    if (!(result = InsertFile(kJsonUnitRoot, digest, *json))) {
+    if (!(result = InsertFile(kJsonUnitRoot, digest, *json)).ok()) {
       return result;
     }
   }
@@ -120,7 +122,7 @@ StatusOr<std::string> KzipWriter::WriteUnit(
   return result;
 }
 
-StatusOr<std::string> KzipWriter::WriteFile(absl::string_view content) {
+absl::StatusOr<std::string> KzipWriter::WriteFile(absl::string_view content) {
   int32_t rc = InitializeArchive();
   if (rc) {
     return absl::InternalError(ZipWriter::ErrorCodeString(rc));
@@ -135,9 +137,9 @@ absl::Status KzipWriter::Close() {
   return rc ? absl::InternalError(ZipWriter::ErrorCodeString(rc)) : absl::OkStatus();
 }
 
-StatusOr<std::string> KzipWriter::InsertFile(absl::string_view dir,
-                                             absl::string_view content_digest,
-                                             absl::string_view content) {
+absl::StatusOr<std::string> KzipWriter::InsertFile(absl::string_view dir,
+                                                   absl::string_view content_digest,
+                                                   absl::string_view content) {
   auto kzip_entry = absl::StrCat(dir, content_digest);
   // Keep track of the inserted entries, reject duplicates
   auto insertion = contents_.insert(kzip_entry);

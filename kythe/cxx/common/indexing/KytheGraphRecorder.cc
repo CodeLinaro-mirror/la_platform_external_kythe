@@ -81,7 +81,9 @@ static const std::string* kEdgeKindSpellings[] = {
     new std::string("/kythe/edge/property/writes"),
     new std::string("/clang/usr"),
     new std::string("/kythe/edge/ref/id"),
-};
+    new std::string("/kythe/edge/ref/writes"),
+    new std::string("/kythe/edge/ref/writes/implicit"),
+    new std::string("/kythe/edge/influences")};
 
 bool of_spelling(absl::string_view str, EdgeKindID* edge_id) {
   size_t edge_index = 0;
@@ -153,7 +155,7 @@ void KytheGraphRecorder::AddProperty(const VNameRef& node_vname,
 
 void KytheGraphRecorder::AddMarkedSource(const VNameRef& node_vname,
                                          const MarkedSource& marked_source) {
-  auto size = marked_source.ByteSize();
+  auto size = marked_source.ByteSizeLong();
   std::vector<char> buffer(size);
   marked_source.SerializeToArray(buffer.data(), size);
   stream_->Emit(FactRef{&node_vname, spelling_of(PropertyID::kCode),

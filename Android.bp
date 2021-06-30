@@ -118,6 +118,7 @@ cc_library_host_static {
     srcs: [
         "kythe/cxx/common/file_utils.cc",
         "kythe/cxx/common/file_vname_generator.cc",
+        "kythe/cxx/common/init.cc",
         "kythe/cxx/common/json_proto.cc",
         "kythe/cxx/common/kythe_metadata_file.cc",
         "kythe/cxx/common/kzip_writer_aosp.cc",
@@ -157,6 +158,7 @@ cc_binary_host {
         "kythe/cxx/extractor/language.cc",
         "kythe/cxx/extractor/path_utils.cc",
         "kythe/cxx/indexer/cxx/clang_utils.cc",
+        "kythe/cxx/indexer/cxx/indexed_parent_map.cc",
         "third_party/llvm/src/cxx_extractor_preprocessor_utils.cc",
         "third_party/llvm/src/clang_builtin_headers.cc",
     ],
@@ -240,6 +242,7 @@ cc_binary_host {
     ],
     static_libs: [
         "kythe_cxx_glog",
+        "kythe_cxx_common",
         "libabsl_base",
         "libabsl_container",
         "libabsl_debugging",

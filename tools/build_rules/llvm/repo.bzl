@@ -36,21 +36,22 @@ def _git(repository_ctx):
         "WORKSPACE",
         "workspace(name = \"%s\")\n" % (repository_ctx.name,),
     )
+    repository_ctx.file("git_origin_rev_id", commit + "\n")
 
     return {"_commit": commit, "name": repository_ctx.name, "_sha256": sha256}
 
 git_llvm_repository = repository_rule(
-    implementation = _git,
     attrs = {
         "_commit": attr.string(
-            default = "992fbce4e9b034e752dcb4e1be0306b49bbc6b19",
+            default = "1c762a81d20f498a93c38c0f0b10ad7c18650422",
         ),
         "_sha256": attr.string(
             # Make sure to update this along with the commit as its presence will cache the download,
             # even if the rules or commit change.
-            default = "8250806418086dd9a9ca840635bc78b4c4f2abc123095e06bf0dc69d5e3519e4",
+            default = "964252e5afb2ac7f5cda77aef3a626446625141f21f77efd80ff95c62e686556",
         ),
     },
+    implementation = _git,
 )
 
 def local_llvm_repository(name, path):

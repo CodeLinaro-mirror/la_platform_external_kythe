@@ -13,6 +13,8 @@ MANIFEST-*
 \#*#
 .DS_Store
 .vscode
+.clangd
+.cache
 
 # Binary files
 *.class
@@ -29,9 +31,8 @@ third_party/openssl
 third_party/ossp-uuid
 tools/node
 
-# Kythe website artifacts
-kythe/web/site/.bundle/
-kythe/web/site/_vendor/
-
 # User bazelrc overrides
 /user.bazelrc
+
+# Ignore Rust build artifacts
+kythe/rust/**/target

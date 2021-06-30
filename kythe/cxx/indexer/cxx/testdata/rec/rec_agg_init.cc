@@ -1,11 +1,22 @@
 // Tests that aggregate initialization references struct.
 
+struct Default {
+  Default();
+};
+
+//- @I defines/binding StructI
+struct I;
+
 //- @S defines/binding StructS
 struct S {
   //- @a defines/binding FieldA
   int a;
   //- @b defines/binding FieldB
   long b;
+  //- @c defines/binding FieldC
+  bool c = false;
+  //- @d defines/binding FieldD
+  Default d;
 };
 
 //- @T defines/binding StructT
@@ -19,7 +30,7 @@ struct T : S {
   //- @l defines/binding FieldL
   int l;
   //- @m defines/binding FieldM
-  char m;
+  char m = 0;
 };
 
 //- @U defines/binding UnionU
@@ -30,7 +41,18 @@ union U {
   long y;
 };
 
+//- @V defines/binding StructV
+struct V {
+  //- @s defines/binding FieldS
+  S s;
+  //- @t defines/binding FieldT
+  T t;
+  T u;
+};
+
 S FromValue();
+
+const I& ReturnsIncomplete();
 
 template <typename...T>
 void fn(T&&...);
@@ -38,6 +60,9 @@ void fn(T&&...);
 void f() {
   //- @S ref StructS
   //- @"1" ref/init FieldA
+  //- !{ @"}" ref/init FieldB }
+  //- !{ @"}" ref/init FieldC }
+  //- !{ @"}" ref/init FieldD }
   auto s = S{1};
 
   //- @T ref StructT
@@ -61,5 +86,17 @@ void f() {
   fn(S{});
 
   //- !{ @"FromValue()" ref/init _ }
-  S v{FromValue()};
+  S c{FromValue()};
+
+  //- V ref StructV
+  //- @"{1}" ref/init FieldS
+  //- @"1" ref/init FieldA
+  //- @"2" ref/init FieldT
+  //- @"2" ref/init FieldA
+  //- !{ @#0"}" ref/init _ }
+  //- !{ @#1"}" ref/init _ }
+  V v{{1}, 2};
+
+  //- @#0I ref StructI
+  const I& i{ReturnsIncomplete()};
 }

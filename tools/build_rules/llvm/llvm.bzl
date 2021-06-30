@@ -1,5 +1,4 @@
 load("@io_kythe_llvmbzlgen//rules:configure_file.bzl", "configure_file")
-load("@io_kythe_llvmbzlgen//rules:llvmbuild.bzl", "llvmbuild")
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//lib:collections.bzl", "collections")
 
@@ -14,13 +13,6 @@ def _repo_path(path):
         return path
     return paths.join("external", native.repository_name()[1:], path.lstrip("/"))
 
-def _llvm_build_deps(ctx, name):
-    name = _replace_prefix(name, "LLVM", "")
-    return [
-        ":LLVM" + d
-        for d in llvmbuild.library_dependencies(ctx._config.llvmbuildctx, name)
-    ]
-
 def _root_path(ctx):
     return paths.join(*[s.path for s in ctx._state]).lstrip("/")
 
@@ -34,13 +26,24 @@ def _join_path(root, path):
         root = paths.relativize(root, _ROOT_PREFIX)
     return paths.normalize(paths.join(root, path))
 
-def _llvm_headers(root):
+def _llvm_headers(root, additional_header_dirs = []):
     root = _replace_prefix(root, "lib/", "include/llvm/")
-    return _glob([_join_path(root, "**/*.*")])
+    hdrglob = [_join_path(root, "**/*.*")]
+    for dir in additional_header_dirs:
+        # Only include "public" headers in the header files.
+        if paths.is_absolute(dir) and "include/llvm" in dir:
+            hdrglob.append(paths.join(_join_path(root, dir), "**/*.*"))
+    return _glob(hdrglob)
 
 def _replace_prefix(value, prefix, repl):
     if value.startswith(prefix):
         return repl + value[len(prefix):]
+    return value
+
+def _replace_suffix(value, suffix_map):
+    for suffix, repl in suffix_map.items():
+        if value.endswith(suffix):
+            return value[:len(value) - len(suffix)] + repl
     return value
 
 def _clang_headers(root):
@@ -101,14 +104,24 @@ def _configure_file(ctx, src, out, *unused):
         }),
     )
 
-def _llvm_library(ctx, name, srcs, hdrs = [], deps = [], additional_header_dirs = [], **kwargs):
+def _llvm_library(
+        ctx,
+        name,
+        srcs,
+        hdrs = [],
+        deps = [],
+        additional_header_dirs = [],
+        link_components = [],
+        component_name = [],
+        add_to_component = None,
+        **kwargs):
     # TODO(shahms): Do something with these
     kwargs.pop("link_libs", None)
 
     root = _root_path(ctx)
     depends = ([":llvm-c"] + deps +
                kwargs.pop("depends", []) +
-               _llvm_build_deps(ctx, name))
+               [":LLVM" + _map_llvm_lib(l) for l in link_components])
     depends = collections.uniq([_colonize(d) for d in depends])
     defs = _glob([_join_path(root, "*.def")])
     if defs:
@@ -123,6 +136,15 @@ def _llvm_library(ctx, name, srcs, hdrs = [], deps = [], additional_header_dirs 
         for s in srcs
         if paths.dirname(s)
     }.keys()
+
+    # Upstream LLVM has some inconsistent-case header directories
+    # which causes breakages on macOS.
+    # Adjust the case here if we encounter it.
+    # https://github.com/kythe/kythe/issues/4535
+    additional_header_dirs = [
+        _replace_suffix(dir, {"/Elf": "/ELF", "/ASMParser": "/AsmParser"})
+        for dir in additional_header_dirs
+    ]
     sources = (
         [_join_path(root, s) for s in srcs] +
         _llvm_srcglob(root, additional_header_dirs + subdirs) +
@@ -145,17 +167,31 @@ def _llvm_library(ctx, name, srcs, hdrs = [], deps = [], additional_header_dirs 
         }
         depends += target_kind_deps.get(kind, [])
 
+    if component_name:
+        component_name = "LLVM" + component_name.pop()
+        if name != component_name:
+            native.alias(
+                name = component_name,
+                actual = name,
+            )
     native.cc_library(
         name = name,
         srcs = collections.uniq(sources),
-        hdrs = _llvm_headers(root) + hdrs,
+        hdrs = _llvm_headers(root, additional_header_dirs) + hdrs,
         deps = depends,
         copts = ["-I$(GENDIR)/{0} -I{0}".format(_repo_path(i)) for i in includes],
         **kwargs
     )
 
 def _add_llvm_library(ctx, name, *args):
-    sections = ["ADDITIONAL_HEADER_DIRS", "LINK_LIBS", "DEPENDS"]
+    sections = [
+        "ADDITIONAL_HEADER_DIRS",
+        "LINK_LIBS",
+        "DEPENDS",
+        "LINK_COMPONENTS",
+        "COMPONENT_NAME",
+        "ADD_TO_COMPONENT",
+    ]
     kwargs = _make_kwargs(ctx, name, list(args), sections)
     if name in ["LLVMHello", "LLVMTestingSupport"]:
         return
@@ -206,10 +242,9 @@ def _add_tablegen(ctx, name, tag, *srcs):
     root = _root_path(ctx)
     kwargs = _make_kwargs(ctx, name, [_join_path(root, s) for s in srcs])
     kwargs["srcs"].extend(_llvm_srcglob(root))
-    if name.startswith("llvm-"):
-        kwargs.setdefault("deps", []).extend(_llvm_build_deps(ctx, name[5:]))
-    else:
-        kwargs.setdefault("deps", []).append(":LLVMTableGen")
+    deps = kwargs.setdefault("deps", [])
+    deps.append(":LLVMTableGen")
+    deps.extend([":LLVM" + l for l in _current(ctx).vars.get("LLVM_LINK_COMPONENTS", [])])
     native.cc_binary(name = name, **kwargs)
 
 def _set_cmake_var(ctx, key, *args):
@@ -228,7 +263,7 @@ def _llvm_tablegen(ctx, kind, out, *opts):
         name = _genfile_name(out),
         outs = [out],
         srcs = _glob([
-            _join_path(root, "*.td"),  # local_tds
+            _join_path(root, "**/*.td"),  # local_tds
             "include/llvm/**/*.td",  # global_tds
         ]),
         tools = [":llvm-tblgen"],

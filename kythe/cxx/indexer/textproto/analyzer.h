@@ -20,10 +20,11 @@
 #include <cstdio>
 #include <string>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
-#include "kythe/cxx/common/file_vname_generator.h"
 #include "kythe/cxx/common/indexing/KytheGraphRecorder.h"
 #include "kythe/proto/analysis.pb.h"
+#include "plugin.h"
 
 namespace kythe {
 namespace lang_textproto {
@@ -31,7 +32,7 @@ namespace lang_textproto {
 // The canonical name for the textproto language in Kythe.
 extern const absl::string_view kLanguageName;
 
-/// Analyzes the textproto file described by @unit and emits graph facts to
+/// Analyzes the textproto file(s) described by @unit and emits graph facts to
 /// @recorder.
 ///
 /// The basic indexing flow is as follows:
@@ -52,6 +53,18 @@ extern const absl::string_view kLanguageName;
 /// \param The name of the message type that defines the schema for the
 /// textproto file (including namespace).
 absl::Status AnalyzeCompilationUnit(const proto::CompilationUnit& unit,
+                                    const std::vector<proto::FileData>& files,
+                                    KytheGraphRecorder* recorder);
+
+// Callback function to instantiate plugins for a given proto message.
+using PluginLoadCallback =
+    absl::FunctionRef<std::vector<std::unique_ptr<Plugin>>(
+        const google::protobuf::Message& proto)>;
+
+// Override for AnalyzeCompilationUnit() that accepts a PluginLoadCallback for
+// loading plugins.
+absl::Status AnalyzeCompilationUnit(PluginLoadCallback plugin_loader,
+                                    const proto::CompilationUnit& unit,
                                     const std::vector<proto::FileData>& files,
                                     KytheGraphRecorder* recorder);
 

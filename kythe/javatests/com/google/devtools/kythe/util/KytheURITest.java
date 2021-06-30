@@ -19,6 +19,7 @@ package com.google.devtools.kythe.util;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 
+import com.google.devtools.kythe.proto.CorpusPath;
 import com.google.devtools.kythe.proto.Storage.VName;
 import java.net.URISyntaxException;
 import junit.framework.TestCase;
@@ -108,15 +109,32 @@ public class KytheURITest extends TestCase {
         "kythe://a?path=c#sig", "kythe://a?path=b/../c#sig", "kythe://a?path=./d/.././c#sig");
   }
 
+  public void testCorpusPath() {
+    assertThat(KytheURI.asString(cp("", "", ""))).isEqualTo("kythe:");
+    assertThat(KytheURI.asString(cp("c", "", ""))).isEqualTo("kythe://c");
+    assertThat(KytheURI.asString(cp("c", "r", ""))).isEqualTo("kythe://c?root=r");
+    assertThat(KytheURI.asString(cp("c", "r", "p"))).isEqualTo("kythe://c?path=p?root=r");
+    assertThat(KytheURI.asString(cp("c", "", "p"))).isEqualTo("kythe://c?path=p");
+    assertThat(KytheURI.asString(cp("", "r", "p"))).isEqualTo("kythe:?path=p?root=r");
+    assertThat(KytheURI.asString(cp("", "", "p"))).isEqualTo("kythe:?path=p");
+  }
+
   public void testToStringGoCompatibility() {
     // Test cases added when an incompatibility with Go's kytheuri library is found.
     assertThat(builder().setSignature("a=").build().toString()).isEqualTo("kythe:#a%3D");
     assertThat(builder().setCorpus("kythe").setSignature("a=").build().toString())
         .isEqualTo("kythe://kythe#a%3D");
     assertThat(builder().setSignature("広").build().toString()).isEqualTo("kythe:#%E5%BA%83");
+
+    assertThat(builder().setCorpus("kythe").setPath("unrooted/path").build().toString())
+        .isEqualTo("kythe://kythe?path=unrooted/path");
+    assertThat(builder().setCorpus("kythe").setPath("/rooted/path").build().toString())
+        .isEqualTo("kythe://kythe?path=/rooted/path");
+    assertThat(builder().setCorpus("kythe").setPath("//rooted//path").build().toString())
+        .isEqualTo("kythe://kythe?path=/rooted/path");
   }
 
-  private void checkToString(String expected, String... cases) throws URISyntaxException {
+  private void checkToString(String expected, String... cases) {
     for (String str : cases) {
       assertWithMessage("KytheURI.parse(\"" + str + "\").toString()")
           .that(parse(str).toString())
@@ -175,7 +193,11 @@ public class KytheURITest extends TestCase {
     return KytheURI.newBuilder();
   }
 
-  private static KytheURI parse(String str) throws URISyntaxException {
+  private static KytheURI parse(String str) {
     return KytheURI.parse(str);
+  }
+
+  private static CorpusPath cp(String corpus, String root, String path) {
+    return CorpusPath.newBuilder().setCorpus(corpus).setRoot(root).setPath(path).build();
   }
 }

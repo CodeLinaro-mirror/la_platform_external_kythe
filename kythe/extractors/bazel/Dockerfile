@@ -17,12 +17,12 @@ FROM debian:sid
 # Install C++ compilers and other deps
 # note that openjdk-8-jdk is a dependency of the java extractor
 RUN apt-get update && \
-    apt-get install -y git clang-8 build-essential zip python openjdk-8-jdk && \
+    apt-get install -y git clang-11 build-essential zip python openjdk-8-jdk && \
     apt-get clean
 
 # Create clang symlinks
-RUN ln -s /usr/bin/clang-8 /usr/bin/clang && \
-    ln -s /usr/bin/clang++-8 /usr/bin/clang++
+RUN ln -s /usr/bin/clang-11 /usr/bin/clang && \
+    ln -s /usr/bin/clang++-11 /usr/bin/clang++
 
 RUN echo 'build --client_env=CC=/usr/bin/clang' >> ~/.bazelrc
 RUN echo 'build --client_env=CXX=/usr/bin/clang++' >> ~/.bazelrc
@@ -39,7 +39,7 @@ ADD kythe/extractors/bazel/bazel_wrapper.sh /kythe/
 ADD kythe/release/base/fix_permissions.sh /kythe/
 
 # Bazelisk
-ADD external/com_github_bazelbuild_bazelisk/linux_amd64_stripped/bazelisk /kythe/
+ADD external/com_github_bazelbuild_bazelisk/bazelisk_/bazelisk /kythe/
 
 RUN mkdir -p /workspace
 WORKDIR /workspace

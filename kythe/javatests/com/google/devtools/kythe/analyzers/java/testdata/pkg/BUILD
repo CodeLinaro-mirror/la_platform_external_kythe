@@ -19,6 +19,11 @@ java_library(
             "PrivateInterfaceMethods.java",
         ],
     ),
+    javacopts = [
+        "-Xep:MultipleTopLevelClasses:OFF",
+        "-Xep:PrivateConstructorForUtilityClass:OFF",
+        "-Xep:WildcardImport:OFF",
+    ],
     deps = [
         "//kythe/java/com/google/devtools/kythe/common:autovalue",
         "@maven//:com_google_code_findbugs_jsr305",
@@ -225,13 +230,6 @@ java_verifier_test(
 )
 
 java_verifier_test(
-    name = "names_tests",
-    size = "small",
-    srcs = ["Names.java"],
-    indexer_opts = ["--emit_jvm=names"],
-)
-
-java_verifier_test(
     name = "marked_source_tests",
     size = "small",
     srcs = ["MarkedSource.java"],
@@ -348,7 +346,6 @@ java_verifier_test(
     name = "plugin_tests",
     size = "small",
     srcs = ["PluginTests.java"],
-    indexer_opts = ["--emit_jvm=semantic"],
     load_plugin = "//kythe/javatests/com/google/devtools/kythe/analyzers/java:test_plugin",
 )
 
@@ -383,9 +380,8 @@ java_verifier_test(
 
 java_verifier_test(
     name = "jvm_reference_tests",
-    size = "small",
+    timeout = "long",
     srcs = ["JvmCrossFile.java"],
-    indexer_opts = ["--emit_jvm_references"],
     verifier_deps = [":files_tests"],
 )
 
@@ -464,6 +460,10 @@ java_verifier_test(
 java_library(
     name = "cross_file",
     srcs = ["CrossFile.java"],
+    javacopts = [
+        "-Xep:PrivateConstructorForUtilityClass:OFF",
+        "-Xep:WildcardImport:OFF",
+    ],
     deps = [":files"],
 )
 
@@ -483,4 +483,24 @@ java_verifier_test(
     name = "auto_values_test",
     compilation = ":auto_values",
     load_plugin = "//kythe/java/com/google/devtools/kythe/analyzers/java:auto_value_plugin",
+)
+
+java_library(
+    name = "special_members",
+    srcs = ["SpecialMembers.java"],
+)
+
+java_verifier_test(
+    name = "special_members_test",
+    compilation = ":special_members",
+)
+
+java_library(
+    name = "abstract_class",
+    srcs = ["AbstractClass.java"],
+)
+
+java_verifier_test(
+    name = "abstract_class_test",
+    compilation = ":abstract_class",
 )

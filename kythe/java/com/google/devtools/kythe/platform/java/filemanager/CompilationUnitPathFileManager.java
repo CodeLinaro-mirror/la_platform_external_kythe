@@ -264,7 +264,7 @@ public final class CompilationUnitPathFileManager extends ForwardingStandardJava
   }
 
   /** Logs that path handling will fall back to Javac's option parsing. */
-  private Map<Location, Collection<Path>> logMissingDetailsMap() {
+  private ImmutableMap<Location, Collection<Path>> logMissingDetailsMap() {
     // It's expected that extractors which use JavaDetails will remove the corresponding
     // arguments from the command line.  Those extractors which don't use JavaDetails
     // (or options not present in the details), will remain on the command line and be
@@ -290,11 +290,11 @@ public final class CompilationUnitPathFileManager extends ForwardingStandardJava
         v -> !v.isEmpty());
   }
 
-  private Collection<Path> toPaths(Collection<String> paths) {
+  private ImmutableList<Path> toPaths(Collection<String> paths) {
     return toPaths(paths, fileSystem::getPath);
   }
 
-  private Collection<Path> toPaths(Collection<String> paths, PathFactory factory) {
+  private ImmutableList<Path> toPaths(Collection<String> paths, PathFactory factory) {
     return paths.stream().map(factory::getPath).collect(ImmutableList.toImmutableList());
   }
 
@@ -357,7 +357,11 @@ public final class CompilationUnitPathFileManager extends ForwardingStandardJava
               .toAbsolutePath();
       Path systemRoot = Files.createDirectory(temporaryDirectory.resolve("system"));
       try (Stream<Path> stream = Files.walk(sys.resolve("lib"))) {
-        for (Path path : (Iterable<Path>) stream::iterator) {
+        // While this is ugly, it's safer in general than converting to a one-shot Iterable
+        // using ::iterator.
+        Iterator<Path> it = stream.iterator();
+        while (it.hasNext()) {
+          Path path = it.next();
           Path p =
               Files.copy(
                   path,

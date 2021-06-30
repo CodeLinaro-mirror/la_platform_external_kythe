@@ -20,6 +20,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
+import com.google.common.base.Suppliers;
 import com.google.common.collect.Streams;
 import com.google.devtools.kythe.proto.Storage.VName;
 import com.google.devtools.kythe.proto.Storage.VNameRewriteRule;
@@ -35,9 +36,11 @@ import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayDeque;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.List;
-import java.util.Stack;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -69,7 +72,7 @@ public class FileVNames {
   private static final Type CONFIG_TYPE = new TypeToken<List<BaseFileVName>>() {}.getType();
 
   private final List<BaseFileVName> baseVNames;
-  private final String defaultCorpus;
+  private final Supplier<String> defaultCorpus;
 
   private FileVNames(List<BaseFileVName> baseVNames) {
     Preconditions.checkNotNull(baseVNames);
@@ -78,7 +81,7 @@ public class FileVNames {
       Preconditions.checkNotNull(b.vname, "vname template == null for pattern: %s", b.pattern);
     }
     this.baseVNames = baseVNames;
-    this.defaultCorpus = EnvironmentUtils.defaultCorpus();
+    this.defaultCorpus = Suppliers.memoize(EnvironmentUtils::defaultCorpus);
   }
 
   /**
@@ -184,7 +187,7 @@ public class FileVNames {
     }
   }
 
-  /** Subset of a {@link VName} with built-in templating '@<num>@' markers. */
+  /** Subset of a {@link VName} with built-in templating '@<group>@' markers. */
   private static class VNameTemplate {
     private final String corpus;
     private final String root;
@@ -205,12 +208,12 @@ public class FileVNames {
      * Returns a {@link VName} by filling in its corpus/root/path with regex groups in the given
      * {@link Matcher}.
      */
-    public VName fillInWith(Matcher m, String defaultCorpus) {
+    public VName fillInWith(Matcher m, Supplier<String> defaultCorpus) {
       VName.Builder b = VName.newBuilder();
       if (corpus != null) {
         b.setCorpus(fillIn(corpus, m));
       } else {
-        b.setCorpus(defaultCorpus);
+        b.setCorpus(defaultCorpus.get());
       }
       if (root != null) {
         b.setRoot(fillIn(root, m));
@@ -221,20 +224,27 @@ public class FileVNames {
       return b.build();
     }
 
-    private static final Pattern replacerMatcher = Pattern.compile("@(\\d+)@");
+    /**
+     * Returns a {@link VName} by filling in its corpus/root/path with regex groups in the given
+     * {@link Matcher}.
+     */
+    public VName fillInWith(Matcher m, String defaultCorpus) {
+      return fillInWith(m, () -> defaultCorpus);
+    }
+
+    private static final Pattern replacerPattern = Pattern.compile("@(\\w+)@");
 
     private static String fillIn(String tmpl, Matcher m) {
-      Matcher replacers = replacerMatcher.matcher(tmpl);
-      Stack<ReplacementMarker> matches = new Stack<>();
+      Matcher replacers = replacerPattern.matcher(tmpl);
+      Deque<ReplacementMarker> matches = new ArrayDeque<>();
       while (replacers.find()) {
-        matches.push(
-            new ReplacementMarker(
-                replacers.start(), replacers.end(), Integer.parseInt(replacers.group(1))));
+        matches.addFirst(
+            new ReplacementMarker(replacers.start(), replacers.end(), replacers.group(1)));
       }
       StringBuilder builder = new StringBuilder(tmpl);
       while (!matches.isEmpty()) {
-        ReplacementMarker res = matches.pop();
-        builder.replace(res.start, res.end, m.group(res.grp));
+        ReplacementMarker res = matches.removeFirst();
+        builder.replace(res.start, res.end, res.groupText(m));
       }
       return builder.toString();
     }
@@ -249,12 +259,21 @@ public class FileVNames {
   private static class ReplacementMarker {
     final int start;
     final int end;
-    final int grp;
+    final String grp;
 
-    ReplacementMarker(int start, int end, int grp) {
+    ReplacementMarker(int start, int end, String grp) {
       this.start = start;
       this.end = end;
       this.grp = grp;
+    }
+
+    String groupText(Matcher m) {
+      try {
+        int idx = Integer.parseInt(grp);
+        return m.group(idx);
+      } catch (NumberFormatException unused) {
+        return m.group(grp);
+      }
     }
   }
 

@@ -57,12 +57,13 @@ argument: "-I./kythe/cxx/extractor"
 argument: "./kythe/cxx/extractor/testdata/build_config.cc"
 argument: "-fsyntax-only"
 source_file: "./kythe/cxx/extractor/testdata/build_config.cc"
-working_directory: "TEST_CWD"
+working_directory: "/root"
 entry_context: "hash0"
 details {
   # The TextFormat parser does not like our custom type_url, but generally
   # disregards the part before the type name.
   [type.googleapis.com/kythe.proto.BuildDetails] {
+    build_target: "//this/is/a/build:target"
     build_config: "test-build-config"
   }
 }
@@ -77,11 +78,11 @@ TEST(CxxExtractorTest, TestBuildConfigExtraction) {
           "-I./kythe/cxx/extractor",
           "./kythe/cxx/extractor/testdata/build_config.cc",
       },
-      {{"KYTHE_BUILD_CONFIG", "test-build-config"}},
+      {{"KYTHE_BUILD_CONFIG", "test-build-config"},
+       {"KYTHE_ANALYSIS_TARGET", "//this/is/a/build:target"}},
   });
   CanonicalizeHashes(&unit);
   unit.set_argument(2, "dummy-target");
-  unit.set_working_directory("TEST_CWD");
   unit.mutable_details()->erase(
       std::remove_if(
           unit.mutable_details()->begin(), unit.mutable_details()->end(),

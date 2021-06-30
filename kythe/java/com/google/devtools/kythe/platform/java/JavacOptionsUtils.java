@@ -56,6 +56,7 @@ import javax.tools.StandardLocation;
  * <p>To make modifications to javac commandline arguments, use {@code ModifiableOptions.of(args)}.
  */
 public class JavacOptionsUtils {
+  private JavacOptionsUtils() {}
 
   private static final Path JAVA_HOME = Paths.get(StandardSystemProperty.JAVA_HOME.value());
   private static final ImmutableList<String> JRE_JARS =
@@ -96,7 +97,7 @@ public class JavacOptionsUtils {
   }
 
   /** Returns the JRE 9-style bootclasspath. */
-  private static ImmutableList<String> getBootclassPath() throws IOException {
+  private static ImmutableList<String> getBootclassPath() {
     StandardJavaFileManager fileManager =
         JavacTool.create().getStandardFileManager(null, null, null);
 
@@ -152,8 +153,6 @@ public class JavacOptionsUtils {
       return ImmutableList.of();
     };
   }
-
-  private static final Consumer<String> NO_OP = (val) -> {};
 
   /** A useful container for modifying javac commandline arguments, in the style of a builder. */
   public static class ModifiableOptions {
@@ -218,9 +217,9 @@ public class JavacOptionsUtils {
       final List<String> replacements = new ArrayList<>(internal.size());
       Consumer<String> placer = (value) -> replacements.add(value);
       if (matched) {
-        acceptOptions(handler, placer, NO_OP);
+        acceptOptions(handler, placer, x -> {});
       } else {
-        acceptOptions(handler, NO_OP, placer);
+        acceptOptions(handler, x -> {}, placer);
       }
       internal = replacements;
       return this;
@@ -228,7 +227,7 @@ public class JavacOptionsUtils {
 
     private ModifiableOptions acceptOptions(
         OptionHandler handler, final Consumer<String> matched, final Consumer<String> unmatched) {
-      return acceptOptions(handler, matched, unmatched, NO_OP);
+      return acceptOptions(handler, matched, unmatched, x -> {});
     }
 
     private ModifiableOptions acceptOptions(
@@ -357,7 +356,7 @@ public class JavacOptionsUtils {
       List<String> replacements = new ArrayList<>(internal.size());
       Consumer<String> matched = (value) -> paths.addAll(PATH_SPLITTER.split(value));
       Consumer<String> unmatched = (value) -> replacements.add(value);
-      acceptOptions(handleOpts(ImmutableList.of(option)), NO_OP, unmatched, matched);
+      acceptOptions(handleOpts(ImmutableList.of(option)), x -> {}, unmatched, matched);
       internal = replacements;
       return paths.build();
     }

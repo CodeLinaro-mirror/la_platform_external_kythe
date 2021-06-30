@@ -25,15 +25,18 @@ import java.util.function.Function;
 
 /** Unescapes text from Kythe doc nodes into SafeHtml. */
 public class DocUnbracketer {
+  private DocUnbracketer() {}
+
   private static final String ALLOWED_ESCAPES = "[]\\";
 
   /**
-   * Unbracket {@link printable}, following the rules for text in {@link Printable} messages.
+   * Unbracket {@code printable}, following the rules for text in {@link Printable} messages.
    *
    * @param makeLink if provided, this function will be used to generate link URIs from semantic
    *     node tickets. It may return null if there is no available URI.
    * @param printable the document text to unbracket.
    */
+  @SuppressWarnings("JdkObsolete") // Stack needed for nulls
   public static SafeHtml unbracket(Function<String, SafeUrl> makeLink, Printable printable) {
     int size = printable.getRawText().length();
     String raw = printable.getRawText();

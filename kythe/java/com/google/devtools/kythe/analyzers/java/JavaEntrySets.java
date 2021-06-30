@@ -57,12 +57,12 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 public class JavaEntrySets extends KytheEntrySets {
   private static final FluentLogger logger = FluentLogger.forEnclosingClass();
 
+  private static final String ARRAY_BUILTIN_CLASS = "Array";
+
   private final Map<Symbol, VName> symbolNodes = new HashMap<>();
   private final Set<Symbol> symbolsDocumented = new HashSet<>();
   private final Map<Symbol, Integer> symbolHashes = new HashMap<>();
-  private final boolean ignoreVNamePaths;
-  private final boolean ignoreVNameRoots;
-  private final String overrideJdkCorpus;
+  private final JavaIndexerConfig config;
   private final Map<String, Integer> sourceToWildcardCounter = new HashMap<>();
 
   public JavaEntrySets(
@@ -70,13 +70,13 @@ public class JavaEntrySets extends KytheEntrySets {
       FactEmitter emitter,
       VName compilationVName,
       List<FileInput> requiredInputs,
-      boolean ignoreVNamePaths,
-      boolean ignoreVNameRoots,
-      String overrideJdkCorpus) {
+      JavaIndexerConfig config) {
     super(statistics, emitter, compilationVName, requiredInputs);
-    this.ignoreVNamePaths = ignoreVNamePaths;
-    this.ignoreVNameRoots = ignoreVNameRoots;
-    this.overrideJdkCorpus = overrideJdkCorpus;
+    this.config = config;
+  }
+
+  Map<Symbol, VName> getSymbolNodes() {
+    return Collections.unmodifiableMap(symbolNodes);
   }
 
   /**
@@ -107,10 +107,6 @@ public class JavaEntrySets extends KytheEntrySets {
                     .map(sig -> getNode(signatureGenerator, s, sig, null, null))));
   }
 
-  Map<Symbol, VName> getSymbolNodes() {
-    return Collections.unmodifiableMap(symbolNodes);
-  }
-
   /**
    * Returns a node for the given {@link Symbol} and its signature. A new node is created and
    * emitted if necessary.
@@ -126,12 +122,24 @@ public class JavaEntrySets extends KytheEntrySets {
     }
 
     ClassSymbol enclClass = sym.enclClass();
+    if (enclClass == null && sym.asType().isPrimitive()) {
+      VName v = newBuiltinAndEmit(sym.asType().toString()).getVName();
+      symbolNodes.put(sym, v);
+      return v;
+    }
+
     VName v = lookupVName(enclClass);
-    if ((v == null || overrideJdkCorpus != null) && fromJDK(sym)) {
+    if ((v == null || config.getOverrideJdkCorpus() != null) && fromJDK(sym)) {
       v =
           VName.newBuilder()
-              .setCorpus(overrideJdkCorpus != null ? overrideJdkCorpus : "jdk")
+              .setCorpus(
+                  config.getOverrideJdkCorpus() != null ? config.getOverrideJdkCorpus() : "jdk")
               .build();
+    }
+
+    if (v == null && sym.owner != null && sym.owner.asType().isPrimitive()) {
+      // Handle primitive .class reference
+      v = newBuiltinAndEmit(sym.asType().toString()).getVName();
     }
 
     if (v == null) {
@@ -141,14 +149,16 @@ public class JavaEntrySets extends KytheEntrySets {
               "Couldn't generate vname for symbol %s.  Input file for enclosing class %s not seen"
                   + " during extraction.",
               sym, enclClass);
-      logger.atWarning().log(msg);
+      if (config.getVerboseLogging()) {
+        logger.atWarning().log(msg);
+      }
       Diagnostic.Builder d = Diagnostic.newBuilder().setMessage(msg);
       return emitDiagnostic(d.build()).getVName();
     } else {
-      if (ignoreVNamePaths) {
+      if (config.getIgnoreVNamePaths()) {
         v = v.toBuilder().setPath(enclClass != null ? enclClass.toString() : "").build();
       }
-      if (ignoreVNameRoots) {
+      if (config.getIgnoreVNameRoots()) {
         v = v.toBuilder().clearRoot().build();
       }
 
@@ -180,6 +190,29 @@ public class JavaEntrySets extends KytheEntrySets {
         newNode(NodeKind.FUNCTION)
             .setCorpusPath(CorpusPath.fromVName(fileVName))
             .addSignatureSalt("" + filePositions.getSpan(lambda)));
+  }
+
+  /** Emits and returns a new {@link EntrySet} representing a static class initializer. */
+  public EntrySet newClassInitAndEmit(String classSignature, VName classNode) {
+    return emitAndReturn(
+        newNode(NodeKind.FUNCTION)
+            .setCorpusPath(CorpusPath.fromVName(classNode))
+            .addSignatureSalt(classNode)
+            .addSignatureSalt("clinit")
+            .setProperty(
+                "code",
+                MarkedSource.newBuilder()
+                    .addChild(
+                        MarkedSource.newBuilder()
+                            .setKind(MarkedSource.Kind.CONTEXT)
+                            .setPreText(classSignature))
+                    .addChild(
+                        MarkedSource.newBuilder()
+                            .setPreText("<clinit>")
+                            .setKind(MarkedSource.Kind.IDENTIFIER))
+                    .setPostChildText(".")
+                    .build())
+            .build());
   }
 
   /**
@@ -346,6 +379,8 @@ public class JavaEntrySets extends KytheEntrySets {
   private VName lookupVName(@Nullable ClassSymbol cls) {
     if (cls == null) {
       return null;
+    } else if (cls.getQualifiedName().contentEquals(ARRAY_BUILTIN_CLASS)) {
+      return newBuiltinAndEmit("array").getVName();
     }
     VName clsVName = lookupVName(getDigest(cls.classfile));
     return clsVName != null ? clsVName : lookupVName(getDigest(cls.sourcefile));

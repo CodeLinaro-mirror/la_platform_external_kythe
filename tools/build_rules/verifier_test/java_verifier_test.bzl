@@ -49,17 +49,17 @@ def _filter_java_sources(src):
 def _java_extract_kzip_impl(ctx):
     deps = []
     for dep in ctx.attr.deps:
-        deps += [dep[JavaInfo]]
+        deps.append(dep[JavaInfo])
 
     srcs = []
     srcjars = []
     dirs = []
     for src in ctx.attr.srcs:
         if KytheGeneratedSourcesInfo in src:
-            srcjars += [src[KytheGeneratedSourcesInfo].srcjar]
-            dirs += [src[KytheGeneratedSourcesInfo].dir]
+            srcjars.append(src[KytheGeneratedSourcesInfo].srcjar)
+            dirs.append(src[KytheGeneratedSourcesInfo].dir)
         else:
-            srcs += [src.files]
+            srcs.append(src.files)
     srcs = depset(transitive = srcs).to_list()
 
     # Actually compile the sources to be used as a dependency for other tests
@@ -125,10 +125,10 @@ java_extract_kzip = rule(
         ),
         "_host_javabase": attr.label(
             cfg = "host",
-            default = Label("@bazel_tools//tools/jdk:current_java_runtime"),
+            default = Label("@bazel_tools//tools/jdk:current_host_java_runtime"),
         ),
         "_java_toolchain": attr.label(
-            default = Label("@bazel_tools//tools/jdk:toolchain"),
+            default = Label("@bazel_tools//tools/jdk:current_java_toolchain"),
         ),
     },
     fragments = ["java"],
@@ -152,6 +152,7 @@ def java_verifier_test(
         verifier_deps = [],
         deps = [],
         size = "small",
+        timeout = None,
         tags = [],
         extractor = None,
         extractor_opts = _default_java_extractor_opts,
@@ -179,7 +180,7 @@ def java_verifier_test(
     """
     if compilation:
         kzip = name + "_kzip"
-        extract_java(name = kzip, compilation = compilation, testonly = True)
+        extract_java(name = kzip, testonly = True, compilation = compilation)
     else:
         kzip = _invoke(
             java_extract_kzip,
@@ -209,7 +210,7 @@ def java_verifier_test(
             "--load_plugin",
             "$(location {})".format(load_plugin_deploy_jar),
         ]
-        tools += [load_plugin_deploy_jar]
+        tools.append(load_plugin_deploy_jar)
 
     entries = _invoke(
         index_compilation,
@@ -229,6 +230,7 @@ def java_verifier_test(
         verifier_test,
         name = name,
         size = size,
+        timeout = timeout,
         srcs = goals,
         opts = verifier_opts,
         tags = tags,
@@ -303,6 +305,7 @@ def java_proto_verifier_test(
         name,
         srcs,
         size = "small",
+        proto_libs = [],
         proto_srcs = [],
         tags = [],
         java_extractor_opts = _default_java_extractor_opts,
@@ -317,6 +320,7 @@ def java_proto_verifier_test(
       tags: Test target tags.
       visibility: Visibility of the test target.
       srcs: The compilation's Java source files; each file's verifier goals will be checked
+      proto_libs: The proto_library targets containing proto_srcs
       proto_srcs: The compilation's proto source files; each file's verifier goals will be checked
       verifier_opts: List of options passed to the verifier tool
       vnames_config: Optional path to a VName configuration file
@@ -326,7 +330,7 @@ def java_proto_verifier_test(
     proto_kzip = _invoke(
         proto_extract_kzip,
         name = name + "_proto_kzip",
-        srcs = proto_srcs,
+        srcs = proto_libs,
         tags = tags,
         visibility = visibility,
         vnames_config = vnames_config,
@@ -342,6 +346,7 @@ def java_proto_verifier_test(
         deps = [proto_kzip],
     )
 
+    # TODO(justinbuchanan): use java_proto_library instead of manually invoking protoc
     _generate_java_proto(
         name = name + "_gensrc",
         srcs = proto_srcs,
@@ -375,7 +380,7 @@ def java_proto_verifier_test(
         verifier_test,
         name = name,
         size = size,
-        srcs = [entries, proto_entries] + proto_srcs,
+        srcs = [entries, proto_entries],
         opts = verifier_opts,
         tags = tags,
         visibility = visibility,
