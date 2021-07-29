@@ -187,6 +187,13 @@ cc_binary_host {
         "libcrypto",
     ],
     generated_headers: ["clang_builtin_headers_resources"],
+    target: {
+        darwin: {
+            host_ldlibs: [
+                "-framework CoreFoundation",
+            ],
+        },
+    },
 }
 
 cc_binary_host {
@@ -223,6 +230,13 @@ cc_binary_host {
         "libbase",
         "libziparchive",
     ],
+    target: {
+        darwin: {
+            host_ldlibs: [
+                "-framework CoreFoundation",
+            ],
+        },
+    },
 }
 
 // A plugin for protobuffers compiler (aprotoc) to include metadata descriptor
