@@ -17,6 +17,7 @@
 #include "json_proto.h"
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "glog/logging.h"
 #include "google/protobuf/io/coded_stream.h"
@@ -121,7 +122,7 @@ bool WriteMessageAsJsonToString(const google::protobuf::Message& message,
   return status.ok();
 }
 
-StatusOr<std::string> WriteMessageAsJsonToString(
+absl::StatusOr<std::string> WriteMessageAsJsonToString(
     const google::protobuf::Message& message) {
   std::string result;
   auto status = WriteMessageAsJsonToStringInternal(message, &result);
@@ -234,9 +235,9 @@ absl::Status ParseFromJsonString(absl::string_view input,
   return ParseFromJsonString(input, DefaultParseOptions(), message);
 }
 
-void PackAny(const google::protobuf::Message& message, const char* type_uri,
-             google::protobuf::Any* out) {
-  out->set_type_url(type_uri);
+void PackAny(const google::protobuf::Message& message,
+             absl::string_view type_uri, google::protobuf::Any* out) {
+  out->set_type_url(type_uri.data(), type_uri.size());
   google::protobuf::io::StringOutputStream stream(out->mutable_value());
   google::protobuf::io::CodedOutputStream coded_output_stream(&stream);
   message.SerializeToCodedStream(&coded_output_stream);

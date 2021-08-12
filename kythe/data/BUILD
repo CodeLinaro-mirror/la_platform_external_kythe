@@ -1,7 +1,9 @@
-package(default_visibility = ["//kythe:default_visibility"])
-
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tools:build_rules/testing.bzl", "shell_tool_test")
 load(":vnames.bzl", "construct_vnames_config")
+load("//kythe/go/util/vnameutil:test/macros.bzl", "test_vname_rules")
+
+package(default_visibility = ["//kythe:default_visibility"])
 
 exports_files([
     "schema_index.textproto",
@@ -21,6 +23,8 @@ filegroup(
         "vnames.cxx.json",
         "vnames.go.json",
         "vnames.java.json",
+        "vnames.proto.json",
+        # generic vnames are low precedence
         "vnames.json",
     ],
 )
@@ -45,10 +49,13 @@ shell_tool_test(
     },
 )
 
-load("//kythe/go/util/vnameutil:test/macros.bzl", "test_vname_rules")
-
 test_vname_rules(
     name = "go_vnames_test",
     rules = "vnames.go.json",
     tests = "vnames_test.go.json",
+)
+
+bzl_library(
+    name = "vnames_bzl",
+    srcs = ["vnames.bzl"],
 )

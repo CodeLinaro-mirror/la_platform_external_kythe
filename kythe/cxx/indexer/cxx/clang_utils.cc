@@ -45,6 +45,7 @@ clang::SourceLocation GetLocForEndOfToken(
                                            source_manager, lang_options);
 }
 
+// TODO(zarko): Update this to handle member specializations.
 const clang::Decl* FindSpecializedTemplate(const clang::Decl* decl) {
   if (const auto* FD = llvm::dyn_cast<const clang::FunctionDecl>(decl)) {
     if (auto* ftsi = FD->getTemplateSpecializationInfo()) {
@@ -82,5 +83,43 @@ const clang::Decl* FindSpecializedTemplate(const clang::Decl* decl) {
     }
   }
   return decl;
+}
+
+bool ShouldHaveBlameContext(const clang::Decl* decl) {
+  // TODO(zarko): introduce more blameable decls.
+  switch (decl->getKind()) {
+    case clang::Decl::Kind::Field:
+    case clang::Decl::Kind::Var:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool IsUsedAsWrite(const IndexedParentMap& map, const clang::Stmt* stmt) {
+  // TODO(zarko): Improve coverage (or get rid of this entirely and maintain
+  // traversal state in the AST walker; this would be more of a maintenance
+  // and correctness burden, but may be required for richer representations.)
+  if (stmt == nullptr) return false;
+  const auto* indexed_parent = map.GetIndexedParent(*stmt);
+  if (indexed_parent == nullptr) return false;
+  const auto* parent_stmt = indexed_parent->parent.get<clang::Stmt>();
+  while (llvm::isa_and_nonnull<clang::MemberExpr>(parent_stmt)) {
+    indexed_parent = map.GetIndexedParent(*parent_stmt);
+    if (indexed_parent == nullptr) return false;
+    parent_stmt = indexed_parent->parent.get<clang::Stmt>();
+  }
+  if (parent_stmt == nullptr) return false;
+
+  switch (parent_stmt->getStmtClass()) {
+    case clang::Stmt::StmtClass::BinaryOperatorClass: {
+      const auto* binop = clang::dyn_cast<clang::BinaryOperator>(parent_stmt);
+      if (binop == nullptr) return false;
+      return binop->getOpcode() == clang::BinaryOperator::Opcode::BO_Assign &&
+             binop->getLHS() == stmt;
+    }
+    default:
+      return false;
+  }
 }
 }  // namespace kythe

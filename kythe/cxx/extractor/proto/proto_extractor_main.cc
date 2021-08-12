@@ -30,6 +30,7 @@
 #include "absl/strings/match.h"
 #include "glog/logging.h"
 
+#include "kythe/cxx/common/init.h"
 // (ANDROID_BUILD
 #include "kythe/cxx/common/kzip_writer_aosp.h"
 // )
@@ -49,7 +50,7 @@ IndexWriter OpenKzipWriterOrDie(absl::string_view path) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
-  google::InitGoogleLogging(argv[0]);
+  kythe::InitializeProgram(argv[0]);
   absl::SetProgramUsageMessage(
       R"(Standalone extractor for the Kythe Proto indexer.
 Creates a Kzip containing the main proto file(s) and any dependencies.

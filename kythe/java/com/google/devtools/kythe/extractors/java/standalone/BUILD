@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@rules_java//java:defs.bzl", "java_binary", "java_library")
 
 package(default_visibility = ["//kythe:default_visibility"])
@@ -48,5 +49,11 @@ java_library(
         "//kythe/proto:analysis_java_proto",
         "//third_party/guava",
         "//third_party/javac",
+        "@com_google_common_flogger//api",
     ],
+)
+
+bzl_library(
+    name = "aspect_bzl",
+    srcs = ["aspect.bzl"],
 )

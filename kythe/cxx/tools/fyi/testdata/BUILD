@@ -1,7 +1,8 @@
-package(default_visibility = ["//kythe:default_visibility"])
-
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tools:build_rules/testing.bzl", "shell_tool_test")
 load(":compile_commands.bzl", "compile_commands")
+
+package(default_visibility = ["//kythe:default_visibility"])
 
 compile_commands(
     name = "compile_commands",
@@ -71,4 +72,9 @@ shell_tool_test(
         "KYTHE_WRITE_ENTRIES": "//kythe/go/storage/tools:write_entries",
         "KYTHE_WRITE_TABLES": "//kythe/go/serving/tools:write_tables",
     },
+)
+
+bzl_library(
+    name = "compile_commands_bzl",
+    srcs = ["compile_commands.bzl"],
 )

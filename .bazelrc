@@ -5,10 +5,7 @@ startup --host_jvm_args=-Dbazel.DigestFunction=SHA256
 build --strategy=TypeScriptCompile=sandboxed,local
 
 # Compatibility flags to avoid regressions.
-build --incompatible_disallow_empty_glob
-
-# Required for build_bazel_rules_nodejs
-common --experimental_allow_incremental_repository_updates
+common --incompatible_disallow_empty_glob
 
 build --workspace_status_command tools/buildstamp/get_workspace_status
 build --auto_cpu_environment_group=//buildenv:cpu
@@ -26,6 +23,12 @@ build --java_toolchain=@bazel_tools//tools/jdk:toolchain_java8
 build --javabase=@bazel_tools//tools/jdk:remote_jdk11
 build --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_java8
 build --host_javabase=@bazel_tools//tools/jdk:remote_jdk11
+
+# Import default javacopts
+import %workspace%/tools/javacopts.bazelrc
+
+# For release, stamp binaries, use optimized mode w/ minimum line table debugging.
+build:release --stamp -c opt --copt=-gmlt
 
 # Use the RBE instance in the kythe-repo project
 build:remote --remote_instance_name=projects/kythe-repo/instances/default_instance --project_id=kythe-repo
@@ -63,6 +66,8 @@ build:remote --extra_toolchains=@io_kythe//tools/build_rules/lexyacc:lexyacc_rem
 build:remote --action_env=LEIN_JAVA_CMD=
 
 test:prepush --verbose_failures --noshow_loading_progress --noshow_progress
+test:prepush --test_summary=terse --test_output=errors
+test:prepush --test_tag_filters=-manual,-broken,-arc-ignore,-docker
 
 # Support user-provided user.bazelrc
-try-import user.bazelrc
+try-import %workspace%/user.bazelrc

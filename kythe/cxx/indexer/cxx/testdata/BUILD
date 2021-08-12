@@ -1,16 +1,16 @@
-package(default_visibility = ["//kythe:default_visibility"])
-
-exports_files(
-    ["test_vnames.json"],
-    visibility = ["//kythe:default_visibility"],
-)
-
 load(
     "//tools/build_rules/verifier_test:cc_indexer_test.bzl",
     "cc_extract_kzip",
     "cc_extractor_test",
     "cc_indexer_test",
     "objc_indexer_test",
+)
+
+package(default_visibility = ["//kythe:default_visibility"])
+
+exports_files(
+    ["test_vnames.json"],
+    visibility = ["//kythe:default_visibility"],
 )
 
 cc_indexer_test(
@@ -2131,6 +2131,19 @@ cc_indexer_test(
 )
 
 cc_indexer_test(
+    name = "template_exclude",
+    srcs = ["template/template_exclude.cc"],
+    check_for_singletons = True,
+    ignore_dups = True,
+    tags = ["template"],
+    template_instance_exclude_path_pattern = ".*exclude.*",
+    deps = [
+        "template/exclude_this_file.h",
+        "template/include_this_file.h",
+    ],
+)
+
+cc_indexer_test(
     name = "template_field",
     srcs = ["template/template_field.cc"],
     tags = ["template"],
@@ -3219,10 +3232,110 @@ objc_indexer_test(
 objc_indexer_test(
     name = "subscript_ref",
     srcs = ["objc/subscript_ref.m"],
+    ignore_dups = True,
     tags = ["objc"],
 )
 
 test_suite(
     name = "indexer_objc",
     tags = ["objc"],
+)
+
+cc_indexer_test(
+    name = "df_field_ref_blame",
+    srcs = ["df/df_field_ref_blame.cc"],
+    ignore_dups = True,
+    tags = ["df"],
+)
+
+cc_indexer_test(
+    name = "df_field_rw",
+    srcs = ["df/df_field_rw.cc"],
+    tags = ["df"],
+)
+
+cc_indexer_test(
+    name = "df_field_influence",
+    srcs = ["df/df_field_influence.cc"],
+    experimental_record_dataflow_edges = True,
+    tags = ["df"],
+)
+
+cc_indexer_test(
+    name = "df_fncall_influence",
+    srcs = ["df/df_fncall_influence.cc"],
+    experimental_record_dataflow_edges = True,
+    ignore_dups = True,
+    tags = ["df"],
+)
+
+cc_indexer_test(
+    name = "df_fncall_influence_defaultargs",
+    srcs = ["df/df_fncall_influence_defaultargs.cc"],
+    experimental_record_dataflow_edges = True,
+    ignore_dups = True,
+    tags = ["df"],
+)
+
+cc_indexer_test(
+    name = "df_fncall_influence_pack",
+    size = "medium",
+    srcs = ["df/df_fncall_influence_pack.cc"],
+    experimental_record_dataflow_edges = True,
+    ignore_dups = True,
+    tags = ["df"],
+)
+
+cc_indexer_test(
+    name = "df_fncall_influence_vararg",
+    srcs = ["df/df_fncall_influence_vararg.cc"],
+    experimental_record_dataflow_edges = True,
+    ignore_dups = True,
+    tags = ["df"],
+)
+
+cc_indexer_test(
+    name = "df_var_ref_blame",
+    srcs = ["df/df_var_ref_blame.cc"],
+    tags = ["df"],
+)
+
+cc_indexer_test(
+    name = "df_var_ref_file_blame",
+    srcs = ["df/df_var_ref_file_blame.cc"],
+    tags = ["df"],
+)
+
+cc_indexer_test(
+    name = "df_var_rw",
+    srcs = ["df/df_var_rw.cc"],
+    tags = ["df"],
+)
+
+cc_indexer_test(
+    name = "df_var_influence",
+    srcs = ["df/df_var_influence.cc"],
+    experimental_record_dataflow_edges = True,
+    ignore_dups = True,
+    tags = ["df"],
+)
+
+test_suite(
+    name = "indexer_df",
+    tags = ["df"],
+)
+
+cc_indexer_test(
+    name = "toolchain_verify_no_diagnostics_test",
+    srcs = ["toolchain/verify_no_diagnostics.cc"],
+    copts = [
+        "-Xclang",
+        "-verify",
+    ],
+    tags = ["toolchain"],
+)
+
+test_suite(
+    name = "indexer_toolchain",
+    tags = ["toolchain"],
 )

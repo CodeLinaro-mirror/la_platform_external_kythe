@@ -16,6 +16,7 @@
 
 #include "kythe/cxx/indexer/proto/file_descriptor_walker.h"
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -24,8 +25,8 @@
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/repeated_field.h"
 #include "google/protobuf/stubs/map_util.h"
-#include "kythe/cxx/common/status_or.h"
 #include "kythe/cxx/indexer/proto/marked_source.h"
+#include "kythe/cxx/indexer/proto/offset_util.h"
 #include "kythe/cxx/indexer/proto/proto_graph_builder.h"
 #include "re2/re2.h"
 #include "re2/stringpiece.h"
@@ -48,7 +49,6 @@ using ::google::protobuf::OneofDescriptor;
 using ::google::protobuf::ServiceDescriptor;
 using ::google::protobuf::ServiceDescriptorProto;
 using ::google::protobuf::SourceCodeInfo;
-using ::kythe::StatusOr;
 using ::kythe::proto::VName;
 
 namespace {
@@ -82,28 +82,17 @@ class ScopedLookup {
   const int component_;
 };
 
-// Figures out just how many bytes one needs to go into `line_text` to reach
-// what the proto compiler calls column `column_number`.
-int ByteOffsetIntoLine(int column_number, absl::string_view line_text) {
-  int computed_column = 0;
-  int offset = 0;
-  while (computed_column < column_number && offset < line_text.size()) {
-    if (line_text[offset] == '\t') {
-      // In proto land, tabs go to the next multiple of 8.  There are a million
-      // ways of computing this.  This one will do.
-      computed_column = (computed_column + 8) - (computed_column % 8);
-    } else {
-      ++computed_column;
-    }
-    ++offset;
+absl::optional<absl::string_view> TypeName(const FieldDescriptor& field) {
+  if (field.is_map()) {
+    return absl::nullopt;
   }
-  if (computed_column != column_number) {
-    LOG(ERROR) << "Error computing byte offset: expected " << column_number
-               << " columns but counted up to " << computed_column
-               << " in line \"" << line_text << "\"";
-    return -1;
+  if (const EnumDescriptor* desc = field.enum_type()) {
+    return desc->name();
   }
-  return offset;
+  if (const Descriptor* desc = field.message_type()) {
+    return desc->name();
+  }
+  return absl::nullopt;
 }
 
 }  // namespace
@@ -113,7 +102,8 @@ int FileDescriptorWalker::ComputeByteOffset(int line_number,
   int byte_offset_of_start_of_line =
       line_index_.ComputeByteOffset(line_number, 0);
   absl::string_view line_text = line_index_.GetLine(line_number);
-  int byte_offset_into_line = ByteOffsetIntoLine(column_number, line_text);
+  int byte_offset_into_line =
+      ByteOffsetOfTabularColumn(line_text, column_number);
   if (byte_offset_into_line < 0) {
     return byte_offset_into_line;
   }
@@ -123,8 +113,8 @@ int FileDescriptorWalker::ComputeByteOffset(int line_number,
 Location FileDescriptorWalker::LocationOfLeadingComments(
     const Location& entity_location, int entity_start_line,
     int entity_start_column, const std::string& comments) const {
-  int line_offset_of_entity = ByteOffsetIntoLine(
-      entity_start_column, line_index_.GetLine(entity_start_line));
+  int line_offset_of_entity = ByteOffsetOfTabularColumn(
+      line_index_.GetLine(entity_start_line), entity_start_column);
   if (line_offset_of_entity < 0) {
     return entity_location;
   }
@@ -222,7 +212,7 @@ Location FileDescriptorWalker::LocationOfTrailingComments(
   return comment_location;
 }
 
-StatusOr<PartialLocation> FileDescriptorWalker::ParseLocation(
+absl::StatusOr<PartialLocation> FileDescriptorWalker::ParseLocation(
     const std::vector<int>& span) const {
   PartialLocation location;
   if (span.size() == 4) {
@@ -244,7 +234,7 @@ StatusOr<PartialLocation> FileDescriptorWalker::ParseLocation(
 void FileDescriptorWalker::InitializeLocation(const std::vector<int>& span,
                                               Location* loc) {
   loc->file = file_name_;
-  StatusOr<PartialLocation> possible_location = ParseLocation(span);
+  absl::StatusOr<PartialLocation> possible_location = ParseLocation(span);
   if (possible_location.ok()) {
     PartialLocation partial_location = *possible_location;
     loc->begin = ComputeByteOffset(partial_location.start_line,
@@ -381,6 +371,19 @@ void FileDescriptorWalker::VisitField(const std::string* parent_name,
     }
     const std::vector<int>& type_span = location_map_[lookup_path];
     InitializeLocation(type_span, &type_location);
+
+    // If we're in a message or enum type, decorate only the span
+    // covering the type name itself, not the full package name.
+    // This is consistent with other languages and avoids the possibility
+    // of a multi-line span, which some UIs have problems with.
+    if (absl::optional<absl::string_view> type_name = TypeName(*field)) {
+      absl::string_view full_type = absl::string_view(content_).substr(
+          type_location.begin, type_location.end - type_location.begin);
+      if (auto pos = full_type.rfind(*type_name); pos != full_type.npos) {
+        type_location.begin += pos;
+        type_location.end = type_location.begin + type_name->size();
+      }
+    }
   }
   VName type = VNameForFieldType(field);
 
@@ -656,7 +659,6 @@ void FileDescriptorWalker::VisitEnumValues(const EnumDescriptor* dp,
                           EnumValueDescriptorProto::kNameFieldNumber);
     Location value_location;
     InitializeLocation(location_map_[lookup_path], &value_location);
-    std::string value_vname = dp->full_name() + "." + val_dp->name();
 
     builder_->AddValueToEnum(*enum_node, v_name, value_location);
     if (val_dp->options().deprecated()) {
@@ -762,8 +764,9 @@ void FileDescriptorWalker::VisitNestedFields(const std::string& name_prefix,
 
 void FileDescriptorWalker::AddComments(const VName& v_name,
                                        const std::vector<int>& path) {
-  const auto* protoc_location = FindOrNull(path_location_map_, path);
-  StatusOr<PartialLocation> readable_location =
+  const auto* protoc_location =
+      google::protobuf::FindOrNull(path_location_map_, path);
+  absl::StatusOr<PartialLocation> readable_location =
       ParseLocation(location_map_[path]);
   if (protoc_location != nullptr && readable_location.ok()) {
     Location entity_location;

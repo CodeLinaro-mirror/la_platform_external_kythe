@@ -27,6 +27,8 @@
 #include "GraphObserver.h"
 #include "IndexerLibrarySupport.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTTypeTraits.h"
@@ -41,6 +43,7 @@
 #include "kythe/cxx/indexer/cxx/recursive_type_visitor.h"
 #include "kythe/cxx/indexer/cxx/semantic_hash.h"
 #include "marked_source.h"
+#include "re2/re2.h"
 #include "type_map.h"
 
 namespace kythe {
@@ -75,6 +78,12 @@ struct MiniAnchor {
   GraphObserver::NodeId AnchoredTo;
 };
 
+/// \brief Specifies whether dataflow edges should be emitted.
+enum EmitDataflowEdges : bool {
+  No = false,  ///< Don't emit dataflow edges.
+  Yes = true   ///< Emit dataflow edges.
+};
+
 /// Adds brackets to Text to define anchor locations (escaping existing ones)
 /// and sorts Anchors such that the ith Anchor corresponds to the ith opening
 /// bracket. Drops empty or negative-length spans.
@@ -94,7 +103,9 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
                     BehaviorOnFwdDeclComments ObjC,
                     BehaviorOnFwdDeclComments Cpp, const LibrarySupports& S,
                     clang::Sema& Sema, std::function<bool()> ShouldStopIndexing,
-                    GraphObserver* GO = nullptr, int UsrByteSize = 0)
+                    GraphObserver* GO = nullptr, int UsrByteSize = 0,
+                    EmitDataflowEdges EDE = EmitDataflowEdges::No,
+                    std::shared_ptr<re2::RE2> TIEPP = nullptr)
       : IgnoreUnimplemented(B),
         TemplateMode(T),
         Verbosity(V),
@@ -106,15 +117,23 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
         Sema(Sema),
         MarkedSources(&Sema, &Observer),
         ShouldStopIndexing(std::move(ShouldStopIndexing)),
-        UsrByteSize(UsrByteSize) {}
+        UsrByteSize(UsrByteSize),
+        DataflowEdges(EDE),
+        TemplateInstanceExcludePathPattern(TIEPP) {}
 
   bool VisitDecl(const clang::Decl* Decl);
+  bool TraverseFieldDecl(clang::FieldDecl* Decl);
   bool VisitFieldDecl(const clang::FieldDecl* Decl);
+  bool TraverseVarDecl(clang::VarDecl* Decl);
   bool VisitVarDecl(const clang::VarDecl* Decl);
   bool VisitNamespaceDecl(const clang::NamespaceDecl* Decl);
   bool VisitBindingDecl(const clang::BindingDecl* Decl);
   bool VisitSizeOfPackExpr(const clang::SizeOfPackExpr* Expr);
   bool VisitDeclRefExpr(const clang::DeclRefExpr* DRE);
+
+  bool TraverseCallExpr(clang::CallExpr* CE);
+  bool TraverseReturnStmt(clang::ReturnStmt* RS);
+  bool TraverseBinaryOperator(clang::BinaryOperator* BO);
 
   bool TraverseInitListExpr(clang::InitListExpr* ILE);
   bool VisitInitListExpr(const clang::InitListExpr* ILE);
@@ -674,6 +693,11 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   void RecordCallEdges(const GraphObserver::Range& Range,
                        const GraphObserver::NodeId& Callee);
 
+  // Blames the use of a `Decl` at a particular `Range` on everything at the
+  // top of `BlameStack`. If there is nothing at the top of `BlameStack`,
+  // blames the use on the file.
+  void RecordBlame(const clang::Decl* Decl, const GraphObserver::Range& Range);
+
   /// \return whether `range` should be considered to be implicit under the
   /// current context.
   GraphObserver::Implicit IsImplicit(const GraphObserver::Range& range);
@@ -796,7 +820,7 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   /// NestedNameSpecifier or NestedNameSpecifierLoc.
   template <typename NodeT>
   const IndexedParent* getIndexedParent(const NodeT& Node) {
-    return getIndexedParent(clang::ast_type_traits::DynTypedNode::create(Node));
+    return getIndexedParent(clang::DynTypedNode::create(Node));
   }
 
   /// \return true if `Decl` and all of the nodes underneath it are prunable.
@@ -805,8 +829,7 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   /// This excludes, for example, certain template instantiations.
   bool declDominatesPrunableSubtree(const clang::Decl* Decl);
 
-  const IndexedParent* getIndexedParent(
-      const clang::ast_type_traits::DynTypedNode& Node);
+  const IndexedParent* getIndexedParent(const clang::DynTypedNode& Node);
 
   /// Initializes AllParents, if necessary, and then returns a pointer to it.
   const IndexedParentMap* getAllParents();
@@ -917,9 +940,9 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   void ConnectCategoryToBaseClass(const GraphObserver::NodeId& DeclNode,
                                   const clang::ObjCInterfaceDecl* IFace);
 
-  void LogErrorWithASTDump(const std::string& msg,
+  void LogErrorWithASTDump(absl::string_view msg,
                            const clang::Decl* Decl) const;
-  void LogErrorWithASTDump(const std::string& msg,
+  void LogErrorWithASTDump(absl::string_view msg,
                            const clang::Expr* Expr) const;
 
   /// \brief This is used to handle the visitation of a clang::TypedefDecl
@@ -942,6 +965,9 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
                               const clang::RawComment* Comment,
                               const clang::DeclContext* DCxt,
                               absl::optional<GraphObserver::NodeId> DCID);
+
+  /// \brief Returns whether `Decl` should be indexed.
+  bool ShouldIndex(const clang::Decl* Decl);
 
   /// \brief Maps known Decls to their NodeIds.
   llvm::DenseMap<const clang::Decl*, GraphObserver::NodeId> DeclToNodeId;
@@ -978,6 +1004,13 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   /// \brief The number of (raw) bytes to use to represent a USR. If 0,
   /// no USRs will be recorded.
   int UsrByteSize = 0;
+
+  /// \brief Controls whether dataflow edges are emitted.
+  EmitDataflowEdges DataflowEdges;
+
+  /// \brief if nonempty, the pattern to match a path against to see whether
+  /// it should be excluded from template instance indexing.
+  std::shared_ptr<re2::RE2> TemplateInstanceExcludePathPattern = nullptr;
 };
 
 /// \brief An `ASTConsumer` that passes events to a `GraphObserver`.
@@ -990,7 +1023,7 @@ class IndexerASTConsumer : public clang::SemaConsumer {
       std::function<bool()> ShouldStopIndexing,
       std::function<std::unique_ptr<IndexerWorklist>(IndexerASTVisitor*)>
           CreateWorklist,
-      int UsrByteSize)
+      int UsrByteSize, EmitDataflowEdges EDE, std::shared_ptr<re2::RE2> TIEPP)
       : Observer(GO),
         IgnoreUnimplemented(B),
         TemplateMode(T),
@@ -1000,13 +1033,16 @@ class IndexerASTConsumer : public clang::SemaConsumer {
         Supports(S),
         ShouldStopIndexing(std::move(ShouldStopIndexing)),
         CreateWorklist(std::move(CreateWorklist)),
-        UsrByteSize(UsrByteSize) {}
+        UsrByteSize(UsrByteSize),
+        DataflowEdges(EDE),
+        TemplateInstanceExcludePathPattern(TIEPP) {}
 
   void HandleTranslationUnit(clang::ASTContext& Context) override {
     CHECK(Sema != nullptr);
-    IndexerASTVisitor Visitor(Context, IgnoreUnimplemented, TemplateMode,
-                              Verbosity, ObjCFwdDocs, CppFwdDocs, Supports,
-                              *Sema, ShouldStopIndexing, Observer, UsrByteSize);
+    IndexerASTVisitor Visitor(
+        Context, IgnoreUnimplemented, TemplateMode, Verbosity, ObjCFwdDocs,
+        CppFwdDocs, Supports, *Sema, ShouldStopIndexing, Observer, UsrByteSize,
+        DataflowEdges, TemplateInstanceExcludePathPattern);
     {
       ProfileBlock block(Observer->getProfilingCallback(), "traverse_tu");
       Visitor.Work(Context.getTranslationUnitDecl(), CreateWorklist(&Visitor));
@@ -1041,6 +1077,11 @@ class IndexerASTConsumer : public clang::SemaConsumer {
   /// \brief The number of (raw) bytes to use to represent a USR. If 0,
   /// no USRs will be recorded.
   int UsrByteSize = 0;
+  /// \brief Controls whether dataflow edges are emitted.
+  EmitDataflowEdges DataflowEdges;
+  /// \brief if nonempty, the pattern to match a path against to see whether
+  /// it should be excluded from template instance indexing.
+  std::shared_ptr<re2::RE2> TemplateInstanceExcludePathPattern;
 };
 
 }  // namespace kythe

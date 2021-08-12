@@ -21,8 +21,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,7 +59,7 @@ func (c *cmakeCommand) SetFlags(fs *flag.FlagSet) {
 	fs.Var(&c.extraCmakeArgs, "extra_cmake_args", "A comma-separated list of extra arguments to pass to CMake.")
 }
 
-func (c *cmakeCommand) verifyFlags() error {
+func (c *cmakeCommand) checkFlags() error {
 	for _, key := range []string{"KYTHE_CORPUS", "KYTHE_ROOT_DIRECTORY", "KYTHE_OUTPUT_DIRECTORY"} {
 		if os.Getenv(key) == "" {
 			return fmt.Errorf("required %s not set", key)
@@ -76,7 +76,7 @@ func (c *cmakeCommand) verifyFlags() error {
 
 // Execute implements the subcommands interface and runs cmake extraction.
 func (c *cmakeCommand) Execute(ctx context.Context, fs *flag.FlagSet, args ...interface{}) subcommands.ExitStatus {
-	if err := c.verifyFlags(); err != nil {
+	if err := c.checkFlags(); err != nil {
 		return c.Fail("Incorrect flags: %v", err)
 	}
 	// Since we have to change our working directory, resolve all of our paths early.
@@ -121,7 +121,7 @@ func (c *cmakeCommand) Execute(ctx context.Context, fs *flag.FlagSet, args ...in
 		return c.Fail("Error building repository: %v", err)
 	}
 
-	if err := compdb.ExtractCompilations(ctx, extractor, filepath.Join(buildDir, "compile_commands.json")); err != nil {
+	if err := compdb.ExtractCompilations(ctx, extractor, filepath.Join(buildDir, "compile_commands.json"), nil); err != nil {
 		return c.Fail("Error extracting repository: %v", err)
 	}
 	return subcommands.ExitSuccess

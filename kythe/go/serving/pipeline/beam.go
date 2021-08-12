@@ -35,7 +35,7 @@ import (
 
 	"github.com/apache/beam/sdks/go/pkg/beam"
 	"github.com/apache/beam/sdks/go/pkg/beam/transforms/filter"
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 
 	cpb "kythe.io/kythe/proto/common_go_proto"
 	gspb "kythe.io/kythe/proto/graph_serving_go_proto"
@@ -126,7 +126,9 @@ type KytheBeam struct {
 
 // FromNodes creates a KytheBeam pipeline from an input collection of
 // *spb.Nodes.
-func FromNodes(s beam.Scope, nodes beam.PCollection) *KytheBeam { return &KytheBeam{s: s, nodes: nodes} }
+func FromNodes(s beam.Scope, nodes beam.PCollection) *KytheBeam {
+	return &KytheBeam{s: s, nodes: nodes}
+}
 
 // FromEntries creates a KytheBeam pipeline from an input collection of
 // *spb.Entry messages.
@@ -537,6 +539,13 @@ func (c *combineDecorPieces) CreateAccumulator() *srvpb.FileDecorations {
 }
 
 func (c *combineDecorPieces) MergeAccumulators(accum, n *srvpb.FileDecorations) *srvpb.FileDecorations {
+	accum.Decoration = append(accum.Decoration, n.Decoration...)
+	if accum.File == nil {
+		accum.File = n.File
+	}
+	accum.Target = append(accum.Target, n.Target...)
+	accum.TargetDefinitions = append(accum.TargetDefinitions, n.TargetDefinitions...)
+	accum.Diagnostic = append(accum.Diagnostic, n.Diagnostic...)
 	return accum
 }
 

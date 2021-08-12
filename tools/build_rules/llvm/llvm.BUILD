@@ -1,3 +1,8 @@
+load("@io_kythe//tools:build_rules/cc_resources.bzl", "cc_resources")
+load("@io_kythe//tools/build_rules/llvm:cmake_defines.bzl", "LLVM_TARGETS", "cmake_defines")
+load("@io_kythe//tools/build_rules/llvm:llvm.bzl", "make_context")
+load("@io_kythe//tools/build_rules/llvm:generated_cmake_targets.bzl", "generated_cmake_targets")
+
 package(
     default_visibility = ["//visibility:public"],
 )
@@ -8,6 +13,9 @@ TARGET_DEFAULTS = {
             "utils/TableGen/GlobalISel/*.cpp",
             "utils/TableGen/GlobalISel/*.h",
         ]),
+        "deps": [
+            ":LLVMMC",
+        ],
     },
     "LLVMSupport": {
         "linkopts": [
@@ -158,16 +166,10 @@ cc_library(
 
 genrule(
     name = "clang_basic_version_inc_gen",
+    srcs = [":git_origin_rev_id"],
     outs = ["tools/clang/lib/Basic/VCSVersion.inc"],
-    cmd = ("printf " +
-           "\"#define CLANG_VERSION 9999.0\n\"" +
-           "\"#define CLANG_VERSION_MAJOR 9999\n\"" +
-           "\"#define CLANG_VERSION_MINOR 0\n\"" +
-           "\"#define CLANG_VERSION_PATCHLEVEL 0\n\"" +
-           "\"#define CLANG_VERSION_STRING \\\"google3-trunk\\\"\n\" > $@"),
+    cmd = "echo \"#define CLANG_REVISION \\\"$$(cat $<)\\\"\" > $@",
 )
-
-load("@io_kythe//tools:build_rules/cc_resources.bzl", "cc_resources")
 
 builtin_headers = glob(
     ["tools/clang/lib/Headers/**"],
@@ -193,20 +195,12 @@ cc_resources(
     strip = "staging/include/",
 )
 
-load("@io_kythe//tools/build_rules/llvm:cmake_defines.bzl", "LLVM_TARGETS", "cmake_defines")
-
 cc_library(
     name = "all_targets",
     deps = [":LLVM%sCodeGen" % t for t in LLVM_TARGETS],
 )
 
-load("@io_kythe_llvmbzlgen//rules:llvmbuild.bzl", _llvmbuild_context = "make_context")
-load("@io_kythe//tools/build_rules/llvm:generated_llvm_build_targets.bzl", "generated_llvm_build_targets")
-load("@io_kythe//tools/build_rules/llvm:llvm.bzl", "make_context")
-load("@io_kythe//tools/build_rules/llvm:generated_cmake_targets.bzl", "generated_cmake_targets")
-
 generated_cmake_targets(make_context(
     cmake_defines = cmake_defines(),
-    llvmbuildctx = generated_llvm_build_targets(_llvmbuild_context()),
     target_defaults = TARGET_DEFAULTS,
 ))

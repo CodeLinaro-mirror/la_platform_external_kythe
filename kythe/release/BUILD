@@ -23,7 +23,7 @@ docker_build(
     deps = ["//kythe/release/base"],
 )
 
-release_version = "v0.0.44"
+release_version = "v0.0.52"
 
 genrule(
     name = "release",
@@ -52,6 +52,7 @@ genrule(
         ":textproto_indexer",
         ":tools",
         ":misc",
+        ":fuchsia_rust_extractor",
         "//kythe/proto:public",
         "//third_party:licenses",
         "//kythe/extractors/bazel:extractors_bazelrc",
@@ -83,6 +84,7 @@ genrule(
         "--cp $(location bazel_jvm_extractor) extractors/bazel_jvm_extractor.jar",
         "--cp $(location bazel_proto_extractor) extractors/bazel_proto_extractor",
         "--cp $(location javac_wrapper) extractors/javac-wrapper.sh",
+        "--cp $(location fuchsia_rust_extractor) extractors/fuchsia_rust_extractor",
         "--cp $(location @maven//:org_apache_tomcat_tomcat_annotations_api) jsr250-api-1.0.jar",
         "--cp $(location cxx_extractor) extractors/cxx_extractor",
         "--cp $(location go_extractor) extractors/go_extractor",
@@ -118,7 +120,7 @@ filegroup(
 
 sh_test(
     name = "release_test",
-    timeout = "short",
+    timeout = "moderate",
     srcs = ["release_test.sh"],
     args = [
         # Since go binaries are not located at their bazel target path (//go/binary
@@ -131,7 +133,6 @@ sh_test(
         "//kythe/go/platform/tools/shasum_tool",
         "//kythe/java/com/google/devtools/kythe/util:test_srcs",
         "//kythe/testdata:entries",
-        "//kythe/testdata:test.kindex",
         "//kythe/testdata:test.kzip",
         "//third_party/guava",
         "//third_party/javac:javac_jar",
@@ -239,6 +240,11 @@ filegroup(
 )
 
 filegroup(
+    name = "fuchsia_rust_extractor",
+    srcs = ["//kythe/rust/fuchsia_extractor"],
+)
+
+filegroup(
     name = "tools",
     srcs = [
         "//kythe/cxx/verifier",
@@ -247,7 +253,6 @@ filegroup(
         "//kythe/go/platform/tools/entrystream",
         "//kythe/go/platform/tools/kzip",
         "//kythe/go/platform/tools/kzip_validator",
-        "//kythe/go/platform/tools/viewindex",
         "//kythe/go/serving/tools:http_server",
         "//kythe/go/serving/tools:kythe",
         "//kythe/go/serving/tools:write_tables",

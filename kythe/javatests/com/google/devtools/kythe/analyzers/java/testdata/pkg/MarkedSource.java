@@ -6,6 +6,7 @@ package pkg;
 
 import java.util.List;
 
+@SuppressWarnings("unused")
 //- @MarkedSource defines/binding Class
 //- Class childof Package
 //- Class code ClassId
@@ -16,6 +17,18 @@ import java.util.List;
 //- ClassTok.kind "IDENTIFIER"
 //- ClassTok.pre_text "MarkedSource"
 public class MarkedSource {
+
+  // Implicit static class initializer
+  //- ClassInit.node/kind function
+  //- ClassInit childof Class
+  //- ClassInit code InitCode
+  //- InitCode child.0 InitContext
+  //- InitCode.post_child_text "."
+  //- InitContext.kind "CONTEXT"
+  //- InitContext.pre_text "pkg.MarkedSource"
+  //- InitCode child.1 InitIdent
+  //- InitIdent.kind "IDENTIFIER"
+  //- InitIdent.pre_text "<clinit>"
 
   //- @CONSTANT defines/binding Constant
   //- Constant code CMS
@@ -221,7 +234,7 @@ public class MarkedSource {
 
   //- @Inner defines/binding InnerClass
   //- InnerClass code _
-  public class Inner {
+  public static class Inner {
     //- @field defines/binding IField
     //- IField code CIField
     //- CIField child.1 CIFieldCxt
@@ -332,7 +345,7 @@ public class MarkedSource {
     };
   }
 
-  public class InnerAnon {
+  public static class InnerAnon {
     Object o = new Object() {
       //- @field defines/binding IIAField
       //- IIAField code CIIAField

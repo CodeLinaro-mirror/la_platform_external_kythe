@@ -23,10 +23,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes"
+	"google.golang.org/protobuf/proto"
 
-	anypb "github.com/golang/protobuf/ptypes/any"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // Any is an alias for the protocol buffer Any message type.
@@ -38,14 +37,14 @@ func MarshalAny(pb proto.Message) (*anypb.Any, error) {
 	// The ptypes package vendors generated code for the Any type, so we have
 	// to convert the type. The pointers are convertible, but since we need to
 	// do surgery on the URL anyway, we just construct the output separately.
-	internalAny, err := ptypes.MarshalAny(pb)
+	internalAny, err := anypb.New(pb)
 	if err != nil {
 		return nil, err
 	}
 
 	// Fix up messages in the Kythe namespace.
 	url := internalAny.TypeUrl
-	if name, _ := ptypes.AnyMessageName(internalAny); strings.HasPrefix(name, "kythe.") {
+	if name := string(internalAny.MessageName()); strings.HasPrefix(name, "kythe.") {
 		url = "kythe.io/proto/" + name
 	}
 	return &anypb.Any{
@@ -57,7 +56,7 @@ func MarshalAny(pb proto.Message) (*anypb.Any, error) {
 // UnmarshalAny unmarshals a google.protobuf.Any message into pb.
 // This is an alias for ptypes.UnmarshalAny to save an import.
 func UnmarshalAny(any *anypb.Any, pb proto.Message) error {
-	return ptypes.UnmarshalAny(any, pb)
+	return any.UnmarshalTo(pb)
 }
 
 // SortByTypeURL orders a slice of Any messages by their type URL, modifying

@@ -23,6 +23,7 @@
 #include "absl/strings/string_view.h"
 #include "glog/logging.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
+#include "kythe/cxx/common/init.h"
 #include "kythe/cxx/extractor/bazel_artifact_reader.h"
 
 ABSL_FLAG(std::string, build_event_binary_file, "",
@@ -50,7 +51,7 @@ int DumpArtifacts(const std::string filename) {
   BazelArtifactReader artifacts(&events);
   for (; !artifacts.Done(); artifacts.Next()) {
     std::cout << artifacts.Ref().label << std::endl;
-    for (const auto& uri : artifacts.Ref().uris) {
+    for (const auto& [local_path, uri] : artifacts.Ref().files) {
       std::cout << "  " << Basename(uri) << std::endl;
     }
   }
@@ -64,6 +65,7 @@ int DumpArtifacts(const std::string filename) {
 }  // namespace kythe
 
 int main(int argc, char** argv) {
+  kythe::InitializeProgram(argv[0]);
   absl::ParseCommandLine(argc, argv);
   return kythe::DumpArtifacts(absl::GetFlag(FLAGS_build_event_binary_file));
 }

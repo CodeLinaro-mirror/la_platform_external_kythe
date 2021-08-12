@@ -1,7 +1,11 @@
-package(default_visibility = ["//kythe:default_visibility"])
-
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//:visibility.bzl", "PUBLIC_VISIBILITY")
 load(":toolchain.bzl", "cxx_extractor_toolchain")
+
+package(
+    default_visibility = ["//kythe:default_visibility"],
+    features = ["layering_check"],
+)
 
 cc_library(
     name = "cxx_details",
@@ -111,16 +115,23 @@ cc_library(
         "//kythe/proto:analysis_cc_proto",
         "//kythe/proto:buildinfo_cc_proto",
         "//kythe/proto:cxx_cc_proto",
+        "//kythe/proto:filecontext_cc_proto",
         "//third_party/llvm/src:clang_builtin_headers",
         "//third_party/llvm/src:preprocessor_util_lib",
         "@boringssl//:crypto",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@com_google_protobuf//:protobuf",
         "@com_googlesource_code_re2//:re2",
         "@org_llvm//:LLVMSupport",
+        "@org_llvm//:clangFrontend",
+        "@org_llvm//:clangLex",
         "@org_llvm//:clangTooling",
     ],
 )
@@ -131,7 +142,7 @@ cc_binary(
     deps = [
         ":lib",
         ":supported_language",
-        "@com_github_google_glog//:glog",
+        "//kythe/cxx/common:init",
         "@com_google_protobuf//:protobuf",
     ],
 )
@@ -173,10 +184,14 @@ cc_binary(
         ":lib",
         ":supported_language",
         "//external:zlib",
+        "//kythe/cxx/common:init",
+        "//kythe/cxx/common:path_utils",
         "//third_party/bazel:extra_actions_base_cc_proto",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_protobuf//:protobuf",
         "@com_googlesource_code_re2//:re2",
     ],
@@ -198,11 +213,13 @@ cc_binary(
         ":objc_bazel_support_library",
         ":supported_language",
         "//external:zlib",
+        "//kythe/cxx/common:init",
         "//kythe/cxx/common:path_utils",
         "//third_party/bazel:extra_actions_base_cc_proto",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_protobuf//:protobuf",
         "@com_googlesource_code_re2//:re2",
@@ -227,6 +244,7 @@ cc_test(
         "//kythe/proto:analysis_cc_proto",
         "//third_party:gtest",
         "@com_github_google_glog//:glog",
+        "@com_google_absl//absl/memory",
         "@com_google_protobuf//:protobuf",
         "@com_googlesource_code_re2//:re2",
         "@org_llvm//:LLVMSupport",
@@ -275,6 +293,7 @@ cc_test(
     srcs = ["bazel_event_reader_test.cc"],
     deps = [
         ":bazel_event_reader",
+        "//third_party:gtest",
         "//third_party:gtest_main",
         "@build_event_stream_proto//:build_event_stream_cc_proto",
         "@com_google_absl//absl/strings",
@@ -283,10 +302,57 @@ cc_test(
 )
 
 cc_library(
+    name = "bazel_artifact",
+    hdrs = ["bazel_artifact.h"],
+)
+
+cc_library(
+    name = "bazel_artifact_selector",
+    srcs = ["bazel_artifact_selector.cc"],
+    hdrs = ["bazel_artifact_selector.h"],
+    deps = [
+        ":bazel_artifact",
+        "//kythe/cxx/common:regex",
+        "//kythe/proto:bazel_artifact_selector_cc_proto",
+        "@build_event_stream_proto//:build_event_stream_cc_proto",
+        "@com_github_google_glog//:glog",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_protobuf//:protobuf",
+        "@com_googlesource_code_re2//:re2",
+    ],
+)
+
+cc_test(
+    name = "bazel_artifact_selector_test",
+    srcs = ["bazel_artifact_selector_test.cc"],
+    deps = [
+        ":bazel_artifact",
+        ":bazel_artifact_selector",
+        "//kythe/cxx/common:regex",
+        "//third_party:gtest",
+        "//third_party:gtest_main",
+        "@build_event_stream_proto//:build_event_stream_cc_proto",
+        "@com_github_google_glog//:glog",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf",
+        "@com_googlesource_code_re2//:re2",
+    ],
+)
+
+cc_library(
     name = "bazel_artifact_reader",
     srcs = ["bazel_artifact_reader.cc"],
     hdrs = ["bazel_artifact_reader.h"],
     deps = [
+        ":bazel_artifact",
+        ":bazel_artifact_selector",
         ":bazel_event_reader",
         "@build_event_stream_proto//:build_event_stream_cc_proto",
         "@com_github_google_glog//:glog",
@@ -304,6 +370,7 @@ cc_test(
     deps = [
         ":bazel_artifact_reader",
         ":bazel_event_reader",
+        "//third_party:gtest",
         "//third_party:gtest_main",
         "@build_event_stream_proto//:build_event_stream_cc_proto",
         "@com_google_absl//absl/strings",
@@ -316,8 +383,11 @@ cc_binary(
     srcs = ["dump_bazel_artifacts.cc"],
     deps = [
         ":bazel_artifact_reader",
+        "//kythe/cxx/common:init",
+        "@com_github_google_glog//:glog",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
     ],
 )
@@ -371,4 +441,9 @@ toolchain(
     ],
     toolchain = ":cxx_extractor_macos",
     toolchain_type = ":toolchain_type",
+)
+
+bzl_library(
+    name = "toolchain_bzl",
+    srcs = ["toolchain.bzl"],
 )

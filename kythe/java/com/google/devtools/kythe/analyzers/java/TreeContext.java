@@ -20,9 +20,11 @@ import com.google.common.base.Joiner;
 import com.google.devtools.kythe.analyzers.java.SourceText.Positions;
 import com.google.devtools.kythe.util.Span;
 import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.JCBlock;
 import com.sun.tools.javac.tree.JCTree.JCClassDecl;
 import com.sun.tools.javac.tree.JCTree.JCCompilationUnit;
 import com.sun.tools.javac.tree.JCTree.JCMethodDecl;
+import com.sun.tools.javac.tree.JCTree.JCVariableDecl;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -92,10 +94,14 @@ class TreeContext {
     return parent;
   }
 
-  public TreeContext getClassOrMethodParent() {
+  public TreeContext getScope() {
     TreeContext parent = up();
     while (parent != null
-        && !(parent.getTree() instanceof JCMethodDecl || parent.getTree() instanceof JCClassDecl)) {
+        && !(parent.getTree() instanceof JCMethodDecl
+            || parent.getTree() instanceof JCClassDecl
+            || (parent.getTree() instanceof JCVariableDecl // static fields
+                && parent.getNode() != null)
+            || parent.getTree() instanceof JCBlock)) {
       parent = parent.up();
     }
     return parent;

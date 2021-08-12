@@ -39,7 +39,7 @@
 #       release commit
 #   12) "Publish release"
 
-cd "$(dirname $0)"/../..
+cd "$(dirname "$0")"/../..
 
 if [[ "$(git rev-parse --abbrev-ref HEAD)" != "master" ]]; then
   echo "ERROR: not on master branch" >&2
@@ -62,6 +62,7 @@ if [[ "$previous_version" != v*.*.* ]]; then
 fi
 previous_version=${previous_version#v}
 
+# shellcheck disable=SC2206
 components=(${previous_version//./ })
 ((components[2]++))
 
@@ -104,5 +105,5 @@ git checkout -b "release-$version"
 git commit -am "release: $version"
 
 # Build and test the Kythe release archive.
-bazel --bazelrc=/dev/null test --stamp -c opt \
-  //kythe/release //kythe/release:release_test
+bazel --bazelrc=/dev/null test --config=release //kythe/release:release_test
+bazel --bazelrc=/dev/null build --config=release //kythe/release

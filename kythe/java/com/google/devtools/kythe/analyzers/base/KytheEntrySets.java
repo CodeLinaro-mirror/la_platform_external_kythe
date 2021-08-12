@@ -89,6 +89,18 @@ public class KytheEntrySets {
   }
 
   /**
+   * Returns a {@link NodeBuilder} with the given kind and added signature salts for each {@link
+   * EntrySet} dependency.
+   */
+  public NodeBuilder newNode(NodeKind kind, Iterable<VName> dependencies) {
+    NodeBuilder builder = newNode(kind);
+    for (VName d : dependencies) {
+      builder.addSignatureSalt(d);
+    }
+    return builder;
+  }
+
+  /**
    * Returns a new {@link NodeBuilder} with the given node kind set.
    *
    * <p>Note: use {@link #newNode(NodeKind)} for schema-defined kinds
@@ -178,14 +190,6 @@ public class KytheEntrySets {
     return emitAndReturn(anchor);
   }
 
-  /**
-   * Emits and returns a NAME node representing the specified JVM binary name (See
-   * https://docs.oracle.com/javase/specs/jls/se8/html/jls-13.html#jls-13.1).
-   */
-  public EntrySet getJvmNameAndEmit(String name) {
-    return emitAndReturn(new NodeBuilder(NodeKind.NAME, "jvm").setSignature(name).build());
-  }
-
   /** Emits and returns a DIAGNOSTIC node attached to no file. */
   public EntrySet emitDiagnostic(Diagnostic d) {
     return emitDiagnostic(null, d);
@@ -249,18 +253,6 @@ public class KytheEntrySets {
         new NodeBuilder(NodeKind.FILE, name)
             .setProperty("text", contents)
             .setProperty("text/encoding", encoding.name()));
-  }
-
-  /**
-   * Returns a {@link NodeBuilder} with the given kind and added signature salts for each {@link
-   * EntrySet} dependency.
-   */
-  public NodeBuilder newNode(NodeKind kind, Iterable<VName> dependencies) {
-    NodeBuilder builder = newNode(kind);
-    for (VName d : dependencies) {
-      builder.addSignatureSalt(d);
-    }
-    return builder;
   }
 
   /** Emits an edge of the given kind from {@code source} to {@code target}. */

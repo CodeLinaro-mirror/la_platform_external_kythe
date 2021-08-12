@@ -28,6 +28,7 @@
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
+#include "kythe/cxx/common/init.h"
 #include "kythe/proto/storage.pb.h"
 #include "verifier.h"
 
@@ -52,9 +53,13 @@ ABSL_FLAG(bool, convert_marked_source, false,
 ABSL_FLAG(bool, show_anchors, false, "Show anchor locations instead of @s");
 ABSL_FLAG(bool, file_vnames, true,
           "Find file vnames by matching file content.");
+ABSL_FLAG(bool, use_fast_solver, false,
+          "Use the fast solver. EXPERIMENTAL; NOT ALL FEATURES ARE CURRENTLY "
+          "SUPPORTED.");
 
 int main(int argc, char** argv) {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
+  kythe::InitializeProgram(argv[0]);
   absl::SetProgramUsageMessage(R"(Verification tool for Kythe databases.
 Reads Kythe facts from standard input and checks them against one or more rule
 files. See https://kythe.io/docs/kythe-verifier.html for more details on
@@ -66,7 +71,6 @@ Example:
   cat foo.entries | ${VERIFIER_BIN} --use_file_nodes
 )");
   std::vector<char*> remain = absl::ParseCommandLine(argc, argv);
-  google::InitGoogleLogging(argv[0]);
 
   kythe::verifier::Verifier v;
   if (absl::GetFlag(FLAGS_goal_regex).empty()) {
@@ -103,6 +107,8 @@ Example:
     v.IgnoreFileVnames();
   }
 
+  v.UseFastSolver(absl::GetFlag(FLAGS_use_fast_solver));
+
   std::string dbname = "database";
   size_t facts = 0;
   kythe::proto::Entry entry;
@@ -110,7 +116,7 @@ Example:
   google::protobuf::io::FileInputStream raw_input(STDIN_FILENO);
   for (;;) {
     google::protobuf::io::CodedInputStream coded_input(&raw_input);
-    coded_input.SetTotalBytesLimit(INT_MAX, -1);
+    coded_input.SetTotalBytesLimit(INT_MAX);
     if (!coded_input.ReadVarint32(&byte_size)) {
       break;
     }
@@ -130,7 +136,7 @@ Example:
     ++facts;
   }
 
-  if (!v.PrepareDatabase()) {
+  if (!absl::GetFlag(FLAGS_use_fast_solver) && !v.PrepareDatabase()) {
     return 1;
   }
 

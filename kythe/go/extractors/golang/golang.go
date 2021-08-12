@@ -51,7 +51,7 @@ import (
 
 	"bitbucket.org/creachadair/stringset"
 
-	anypb "github.com/golang/protobuf/ptypes/any"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	apb "kythe.io/kythe/proto/analysis_go_proto"
 	gopb "kythe.io/kythe/proto/go_go_proto"

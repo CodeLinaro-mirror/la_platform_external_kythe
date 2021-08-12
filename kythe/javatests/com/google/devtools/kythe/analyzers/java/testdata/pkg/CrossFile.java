@@ -4,10 +4,11 @@ package pkg;
 
 //- @CONSTANT ref/imports ConstantMember
 import static pkg.Files.CONSTANT;
-//- @Inner ref/imports InnerClass
-import static pkg.Files.Inner;
 //- @staticMethod ref/imports StaticMethod
 import static pkg.Files.staticMethod;
+
+//- @Inner ref/imports InnerClass
+import pkg.Files.Inner;
 
 // Make sure wildcard imports don't crash.
 import static pkg.Files.*;
@@ -25,15 +26,24 @@ public class CrossFile {
   //- @OtherDecl ref ODecl
   OtherDecl f3;
 
+  //- @Inner ref InnerClass
+  Inner in;
+
   //- @Inter ref Inter
   Inter i;
 
-  public static void main(String[] args) {
+  //- @Exception ref Exception
+  //- Exception named _JVMException=vname(_, _, _, _, "jvm")
+  public static void main(String[] args) throws Exception {
     //- @staticMethod ref StaticMethod
     Files.staticMethod();
     //- @staticMethod ref StaticMethod
     staticMethod();
     //- @CONSTANT ref ConstantMember
     System.out.println(Files.CONSTANT);
+    //- @CONSTANT ref ConstantMember
+    System.out.println(CONSTANT);
+
+    throw new Exception();
   }
 }

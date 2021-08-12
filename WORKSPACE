@@ -12,17 +12,31 @@ check_version(MIN_VERSION, MAX_VERSION)
 
 http_archive(
     name = "bazel_toolchains",
-    sha256 = "1342f84d4324987f63307eb6a5aac2dff6d27967860a129f5cd40f8f9b6fd7dd",
-    strip_prefix = "bazel-toolchains-2.2.0",
+    sha256 = "1adf5db506a7e3c465a26988514cfc3971af6d5b3c2218925cd6e71ee443fc3f",
+    strip_prefix = "bazel-toolchains-4.0.0",
     urls = [
-        "https://github.com/bazelbuild/bazel-toolchains/releases/download/2.2.0/bazel-toolchains-2.2.0.tar.gz",
-        "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/releases/download/2.2.0/bazel-toolchains-2.2.0.tar.gz",
+        "https://github.com/bazelbuild/bazel-toolchains/releases/download/4.0.0/bazel-toolchains-4.0.0.tar.gz",
+        "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/releases/download/4.0.0/bazel-toolchains-4.0.0.tar.gz",
     ],
 )
 
 load("//:setup.bzl", "kythe_rule_repositories", "maybe")
 
 kythe_rule_repositories()
+
+# TODO(schroederc): remove this.  This needs to be loaded before loading the
+# go_* rules.  Normally, this is done by go_rules_dependencies in external.bzl,
+# but because we want to overload some of those dependencies, we need the go_*
+# rules before go_rules_dependencies.  Likewise, we can't precisely control
+# when loads occur within a Starlark file so we now need to load this
+# manually...
+load("@io_bazel_rules_go//go/private:repositories.bzl", "go_name_hack")
+
+maybe(
+    go_name_hack,
+    name = "io_bazel_rules_go_name_hack",
+    is_rules_go = False,
+)
 
 # gazelle:repository_macro external.bzl%_go_dependencies
 load("//:external.bzl", "kythe_dependencies")
@@ -33,27 +47,9 @@ load("//tools/build_rules/external_tools:external_tools_configure.bzl", "externa
 
 external_tools_configure()
 
-load("@build_bazel_rules_nodejs//:index.bzl", "npm_install")
+load("@npm//@bazel/labs:package.bzl", "npm_bazel_labs_dependencies")
 
-npm_install(
-    name = "npm",
-    package_json = "//:package.json",
-    package_lock_json = "//:package-lock.json",
-)
-
-load("@npm//:install_bazel_dependencies.bzl", "install_bazel_dependencies")
-
-install_bazel_dependencies()
-
-load("@npm_bazel_typescript//:index.bzl", "ts_setup_workspace")
-
-ts_setup_workspace()
-
-# This binding is needed for protobuf. See https://github.com/protocolbuffers/protobuf/pull/5811
-bind(
-    name = "error_prone_annotations",
-    actual = "@maven//:com_google_errorprone_error_prone_annotations",
-)
+npm_bazel_labs_dependencies()
 
 load("@maven//:compat.bzl", "compat_repositories")
 
@@ -72,20 +68,14 @@ rbe_autoconfig(
     use_legacy_platform_definition = False,
 )
 
-rbe_autoconfig(
-    name = "rbe_bazel_minversion",
-    bazel_version = MIN_VERSION,
-    env = clang_env(),
-    export_configs = True,
-    toolchain_config_suite_spec = DEFAULT_TOOLCHAIN_CONFIG_SUITE_SPEC,
-    use_legacy_platform_definition = False,
+load(
+    "@bazelruby_rules_ruby//ruby:defs.bzl",
+    "ruby_bundle",
 )
 
-rbe_autoconfig(
-    name = "rbe_bazel_maxversion",
-    bazel_version = MAX_VERSION,
-    env = clang_env(),
-    export_configs = True,
-    toolchain_config_suite_spec = DEFAULT_TOOLCHAIN_CONFIG_SUITE_SPEC,
-    use_legacy_platform_definition = False,
+ruby_bundle(
+    name = "website_bundle",
+    bundler_version = "2.1.4",
+    gemfile = "//kythe/web/site:Gemfile",
+    gemfile_lock = "//kythe/web/site:Gemfile.lock",
 )

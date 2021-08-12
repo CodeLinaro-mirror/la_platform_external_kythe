@@ -35,9 +35,9 @@ import (
 	"kythe.io/kythe/go/util/span"
 
 	"bitbucket.org/creachadair/stringset"
-	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	cpb "kythe.io/kythe/proto/common_go_proto"
 	scpb "kythe.io/kythe/proto/schema_go_proto"
@@ -83,6 +83,7 @@ func (c *ColumnarTable) Decorations(ctx context.Context, req *xpb.DecorationsReq
 
 	// TODO(schroederc): handle SPAN requests
 	// TODO(schroederc): handle dirty buffers
+	// TODO(schroederc): file infos
 
 	fileURI, err := kytheuri.Parse(ticket)
 	if err != nil {
@@ -121,12 +122,17 @@ func (c *ColumnarTable) Decorations(ctx context.Context, req *xpb.DecorationsReq
 	}
 
 	// Setup scanning state for constructing reply
+	var patcher *span.Patcher
 	var norm *span.Normalizer                                          // span normalizer for references
 	refsByTarget := make(map[string][]*xpb.DecorationsReply_Reference) // target -> set<Reference>
 	defs := stringset.New()                                            // set<needed definition tickets>
 	buildConfigs := stringset.New(req.BuildConfig...)
 	patterns := xrefs.ConvertFilters(req.Filter)
 	emitSnippets := req.Snippets != xpb.SnippetsKind_NONE
+
+	// The span with which to constrain the set of returned anchor references.
+	var startBoundary, endBoundary int32
+	spanKind := req.SpanKind
 
 	// Main loop to scan over each columnar kv entry.
 	for {
@@ -146,8 +152,17 @@ func (c *ColumnarTable) Decorations(ctx context.Context, req *xpb.DecorationsReq
 
 		switch e := e.Entry.(type) {
 		case *xspb.FileDecorations_Text_:
-			file := e.Text
-			norm = span.NewNormalizer(file.Text)
+			// TODO(danielnorberg): Move the handling of this entry type up out of the loop to
+			//                      ensure that variables used in other cases have been assigned
+			text := e.Text.Text
+			if len(req.DirtyBuffer) > 0 {
+				patcher, err = span.NewPatcher(text, req.DirtyBuffer)
+				if err != nil {
+					return nil, status.Errorf(codes.Internal, "error patching decorations for %s: %v", req.Location.Ticket, err)
+				}
+				text = req.DirtyBuffer
+			}
+			norm = span.NewNormalizer(text)
 
 			loc, err := norm.Location(req.GetLocation())
 			if err != nil {
@@ -155,12 +170,21 @@ func (c *ColumnarTable) Decorations(ctx context.Context, req *xpb.DecorationsReq
 			}
 			reply.Location = loc
 
+			if loc.Kind == xpb.Location_FILE {
+				startBoundary = 0
+				endBoundary = int32(len(text))
+				spanKind = xpb.DecorationsRequest_WITHIN_SPAN
+			} else {
+				startBoundary = loc.Span.Start.ByteOffset
+				endBoundary = loc.Span.End.ByteOffset
+			}
+
 			if req.SourceText {
 				reply.Encoding = idx.TextEncoding
 				if loc.Kind == xpb.Location_FILE {
-					reply.SourceText = file.Text
+					reply.SourceText = text
 				} else {
-					reply.SourceText = file.Text[loc.Span.Start.ByteOffset:loc.Span.End.ByteOffset]
+					reply.SourceText = text[loc.Span.Start.ByteOffset:loc.Span.End.ByteOffset]
 				}
 			}
 		case *xspb.FileDecorations_Target_:
@@ -177,11 +201,17 @@ func (c *ColumnarTable) Decorations(ctx context.Context, req *xpb.DecorationsReq
 			if kind == "" {
 				kind = schema.EdgeKindString(t.GetKytheKind())
 			}
+			start, end, exists := patcher.Patch(t.StartOffset, t.EndOffset)
+			// Filter non-existent anchor.  Anchors can no longer exist if we were
+			// given a dirty buffer and the anchor was inside a changed region.
+			if !exists || !span.InBounds(spanKind, start, end, startBoundary, endBoundary) {
+				continue
+			}
 			ref := &xpb.DecorationsReply_Reference{
 				TargetTicket: kytheuri.ToString(t.Target),
 				BuildConfig:  t.BuildConfig,
 				Kind:         kind,
-				Span:         norm.SpanOffsets(t.StartOffset, t.EndOffset),
+				Span:         norm.SpanOffsets(start, end),
 			}
 			refsByTarget[ref.TargetTicket] = append(refsByTarget[ref.TargetTicket], ref)
 			reply.Reference = append(reply.Reference, ref)
@@ -221,14 +251,28 @@ func (c *ColumnarTable) Decorations(ctx context.Context, req *xpb.DecorationsReq
 			if !defs.Contains(def.Location.Ticket) {
 				continue
 			}
-			reply.DefinitionLocations[def.Location.Ticket] = a2a(def.Location, emitSnippets).Anchor
+			reply.DefinitionLocations[def.Location.Ticket] = a2a(def.Location, nil, emitSnippets).Anchor
 		case *xspb.FileDecorations_Override_:
 			// TODO(schroederc): handle
 		case *xspb.FileDecorations_Diagnostic_:
 			if !req.Diagnostics {
 				continue
 			}
-			reply.Diagnostic = append(reply.Diagnostic, e.Diagnostic.Diagnostic)
+			diag := e.Diagnostic.Diagnostic
+			if diag.Span == nil {
+				reply.Diagnostic = append(reply.Diagnostic, diag)
+			} else {
+				start, end, exists := patcher.PatchSpan(diag.Span)
+				// Filter non-existent (or out-of-bounds) diagnostic.  Diagnostics can
+				// no longer exist if we were given a dirty buffer and the diagnostic
+				// was inside a changed region.
+				if !exists || !span.InBounds(spanKind, start, end, startBoundary, endBoundary) {
+					continue
+				}
+
+				diag.Span = norm.SpanOffsets(start, end)
+				reply.Diagnostic = append(reply.Diagnostic, diag)
+			}
 		default:
 			return nil, fmt.Errorf("unknown FileDecorations entry: %T", e)
 		}
@@ -270,6 +314,7 @@ func (c *ColumnarTable) CrossReferences(ctx context.Context, req *xpb.CrossRefer
 	}
 	emitSnippets := req.Snippets != xpb.SnippetsKind_NONE
 
+	// TODO(schroederc): file infos
 	// TODO(schroederc): implement paging xrefs in large CrossReferencesReply messages
 
 	for _, ticket := range req.Ticket {
@@ -285,6 +330,7 @@ func (c *ColumnarTable) CrossReferences(ctx context.Context, req *xpb.CrossRefer
 		if err != nil {
 			return nil, err
 		}
+		defer it.Close()
 
 		k, val, err := it.Next()
 		if err == io.EOF || !bytes.Equal(k, prefix) {
@@ -342,7 +388,7 @@ func (c *ColumnarTable) CrossReferences(ctx context.Context, req *xpb.CrossRefer
 					anchors = &set.Reference
 				}
 				if anchors != nil {
-					a := a2a(ref.Location, emitSnippets).Anchor
+					a := a2a(ref.Location, nil, emitSnippets).Anchor
 					a.Ticket = ""
 					ra := &xpb.CrossReferencesReply_RelatedAnchor{Anchor: a}
 					*anchors = append(*anchors, ra)
@@ -382,7 +428,7 @@ func (c *ColumnarTable) CrossReferences(ctx context.Context, req *xpb.CrossRefer
 				if node := reply.Nodes[relatedNode]; node != nil {
 					loc := e.NodeDefinition.Location
 					node.Definition = loc.Ticket
-					a := a2a(loc, emitSnippets).Anchor
+					a := a2a(loc, nil, emitSnippets).Anchor
 					reply.DefinitionLocations[loc.Ticket] = a
 				}
 			case *xspb.CrossReferences_Caller_:
@@ -390,7 +436,7 @@ func (c *ColumnarTable) CrossReferences(ctx context.Context, req *xpb.CrossRefer
 					continue
 				}
 				c := e.Caller
-				a := a2a(c.Location, emitSnippets).Anchor
+				a := a2a(c.Location, nil, emitSnippets).Anchor
 				a.Ticket = ""
 				callerTicket := kytheuri.ToString(c.Caller)
 				caller := &xpb.CrossReferencesReply_RelatedAnchor{
@@ -411,7 +457,7 @@ func (c *ColumnarTable) CrossReferences(ctx context.Context, req *xpb.CrossRefer
 					log.Printf("WARNING: missing Caller for callsite: %+v", c)
 					continue
 				}
-				a := a2a(c.Location, emitSnippets).Anchor
+				a := a2a(c.Location, nil, emitSnippets).Anchor
 				a.Ticket = ""
 				// TODO(schroederc): set anchor kind to differentiate kinds?
 				caller.Site = append(caller.Site, a)

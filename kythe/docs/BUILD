@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(":asciidoc.bzl", "asciidoc")
 
 package(default_visibility = ["//kythe:default_visibility"])
@@ -60,4 +61,13 @@ asciidoc(
 asciidoc(
     name = "schema-overview",
     src = "schema-overview.txt",
+)
+
+bzl_library(
+    name = "asciidoc_bzl",
+    srcs = ["asciidoc.bzl"],
+    deps = [
+        "@bazel_skylib//lib:paths",
+        "@bazel_skylib//lib:shell",
+    ],
 )

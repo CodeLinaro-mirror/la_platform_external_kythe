@@ -72,8 +72,7 @@ public class Javac9Wrapper extends AbstractJavacWrapper {
     }
 
     EnumSet<Option> claimed =
-        EnumSet.of(Option.CLASS_PATH, Option.SOURCE_PATH, Option.PROCESSOR_PATH, Option.PROCESSOR, Option.A);
-
+        EnumSet.of(Option.CLASS_PATH, Option.SOURCE_PATH, Option.PROCESSOR_PATH, Option.PROCESSOR);
 
     List<String> completeOptions = new ArrayList<>();
     if (options.isSet(Option.RELEASE)) {

@@ -2,6 +2,7 @@ package pkg;
 
 // Checks that classes are record/class nodes and enums are sum/enumClass nodes
 
+@SuppressWarnings({"unused", "JavaLangClash", "ClassCanBeStatic"})
 //- @Classes defines/binding N
 //- N.node/kind record
 //- N.subkind class
@@ -16,7 +17,8 @@ public class Classes {
   //- DefaultCtorType param.1 N
   //- DefaultCtrAnchor defines DefaultCtor
   //- !{ _DefaultCtorBindingAnchor defines/binding DefaultCtor }
-  
+
+  //- @Subclass defines/binding SubclassOne
   private static class Subclass extends Classes {
     //- ImplicitSuperCall ref/call DefaultCtor
     //- ImplicitSuperCall.loc/start @^"{}"
@@ -74,13 +76,24 @@ public class Classes {
   private void localFunc() {
     //- @LocalClass defines/binding LC
     //- LC childof LF
-    class LocalClass {};
+    class LocalClass {}
+    ;
   }
 
+  //- ClassInit.node/kind function
+  //- ClassInit childof N
+  // !{ ClassInit.subkind "constructor" }
 
   static {
     //- @LocalClassInStaticInitializer defines/binding LCISI
-    //- LCISI childof N
-    class LocalClassInStaticInitializer {};
+    //- LCISI childof ClassInit
+    class LocalClassInStaticInitializer {}
+    ;
   }
 }
+
+//- SubclassOne.tag/static _
+//- SubclassTwo.tag/static _
+//- SI.tag/static _
+//- E.tag/static _
+//- !{I.tag/static _}

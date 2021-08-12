@@ -50,6 +50,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
@@ -186,7 +187,15 @@ public class SignatureGenerator
       } else if (symbol instanceof MethodSymbol) {
         return Optional.of(sigGen.getSignature((MethodSymbol) symbol));
       } else if (symbol instanceof VarSymbol) {
-        return Optional.of(sigGen.getSignature((VarSymbol) symbol));
+        try {
+          return Optional.of(sigGen.getSignature((VarSymbol) symbol));
+        } catch (Types.SignatureGenerator.InvalidSignatureException e) {
+          logger.atWarning().atMostEvery(5, TimeUnit.SECONDS).log(
+              "Likely hitting bug JDK-8212750, omitting reference"
+                  + " (VarSymbol [%s] in class [%s], package [%s], type [%s])",
+              symbol, symbol.outermostClass(), symbol.packge(), symbol.type);
+          return Optional.empty();
+        }
       }
     }
     try {
@@ -245,6 +254,21 @@ public class SignatureGenerator
       }
       sbout.append(visitedElements.get(e));
     }
+    return null;
+  }
+
+  @Override
+  public Void visitType(Type t, StringBuilder sbout) {
+    if (!visitedTypes.containsKey(t)) {
+      StringBuilder sb = new StringBuilder();
+      if (t.isPrimitive()) {
+        sb.append(t.tsym.name);
+      } else if (t.getKind() == TypeKind.VOID) {
+        sb.append(t.tsym.name);
+      }
+      visitedTypes.put(t, sb.toString());
+    }
+    sbout.append(visitedTypes.get(t));
     return null;
   }
 
@@ -436,21 +460,6 @@ public class SignatureGenerator
   }
 
   @Override
-  public Void visitType(Type t, StringBuilder sbout) {
-    if (!visitedTypes.containsKey(t)) {
-      StringBuilder sb = new StringBuilder();
-      if (t.isPrimitive()) {
-        sb.append(t.tsym.name);
-      } else if (t.getKind() == TypeKind.VOID) {
-        sb.append(t.tsym.name);
-      }
-      visitedTypes.put(t, sb.toString());
-    }
-    sbout.append(visitedTypes.get(t));
-    return null;
-  }
-
-  @Override
   public Void visitTypeVar(TypeVar t, StringBuilder sbout) {
     if (boundedVars.contains((TypeVar) t.stripMetadata())) {
       sbout.append(t.tsym.name);
@@ -574,18 +583,6 @@ public class SignatureGenerator
       return toString();
     }
 
-    private void addSignature(ClassSymbol symbol) {
-      this.assembleSig(symbol.type);
-    }
-
-    private void addSignature(MethodSymbol symbol) {
-      addSignature((ClassSymbol) symbol.owner);
-      append('.');
-      append(symbol.name);
-      append(':');
-      assembleSig(symbol.type);
-    }
-
     /**
      * Generates full variable signature (both fields & variables).
      *
@@ -615,6 +612,18 @@ public class SignatureGenerator
       append(':');
       assembleSig(symbol.type);
       return toString();
+    }
+
+    private void addSignature(ClassSymbol symbol) {
+      this.assembleSig(symbol.type);
+    }
+
+    private void addSignature(MethodSymbol symbol) {
+      addSignature((ClassSymbol) symbol.owner);
+      append('.');
+      append(symbol.name);
+      append(':');
+      assembleSig(symbol.type);
     }
 
     private final StringBuilder sb = new StringBuilder();

@@ -34,6 +34,7 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import javax.lang.model.element.Name;
@@ -60,7 +61,9 @@ public final class SourceText {
       if (token.kind == TokenKind.IDENTIFIER) {
         positions.addIdentifier(token.name(), scanner.spanForToken(token));
       } else if (token.kind == TokenKind.NEW) {
-        positions.addIdentifier(Keyword.of("new"), scanner.spanForToken(token));
+        positions.addIdentifier(Keyword.NEW, scanner.spanForToken(token));
+      } else if (token.kind == TokenKind.CLASS) {
+        positions.addIdentifier(Keyword.CLASS, scanner.spanForToken(token));
       } else if (token.kind == TokenKind.LT) {
         starts.addFirst(token);
       } else if (token.kind == TokenKind.GT) {
@@ -107,13 +110,11 @@ public final class SourceText {
   }
 
   /** Names for keywords that must act as anchors. */
-  public static final class Keyword implements Name {
-    private final String keyword;
+  public static enum Keyword implements Name {
+    NEW("new"),
+    CLASS("class");
 
-    /** Factory method that can do something smarter if/when we need it to. */
-    public static Keyword of(String keyword) {
-      return new Keyword(keyword);
-    }
+    private final String keyword;
 
     private Keyword(String keyword) {
       this.keyword = keyword;
@@ -143,20 +144,6 @@ public final class SourceText {
     public String toString() {
       return keyword;
     }
-
-    @Override
-    public boolean equals(Object obj) {
-      if (obj instanceof Keyword) {
-        return ((Keyword) obj).contentEquals(keyword);
-      } else {
-        return false;
-      }
-    }
-
-    @Override
-    public int hashCode() {
-      return 1 + keyword.hashCode();
-    }
   }
 
   /** Utility class to provide ANCHOR positions in Java sources. */
@@ -164,7 +151,7 @@ public final class SourceText {
     private final JavaFileObject sourceFile;
     private final EndPosTable endPositions;
     private final Map<Name, List<Span>> identTable = new HashMap<>();
-    private final SortedSet<Span> bracketGroups = new TreeSet<>();
+    private final NavigableSet<Span> bracketGroups = new TreeSet<>();
 
     private final CharSequence text;
     private final PositionMappings mappings;
@@ -217,6 +204,7 @@ public final class SourceText {
       return null;
     }
 
+    @SuppressWarnings("JdkObsolete")
     public Span findBracketGroup(int startCharOffset) {
       int startOffset = charToByteOffset(startCharOffset);
       SortedSet<Span> grps = bracketGroups.tailSet(new Span(startOffset, startOffset));

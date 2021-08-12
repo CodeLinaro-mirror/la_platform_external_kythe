@@ -23,6 +23,7 @@
 #include "absl/strings/str_format.h"
 
 namespace kythe {
+
 std::string FileOutputStream::Stats::ToString() const {
   return absl::StrCat(
       buffers_merged_, " merged ", buffers_split_, " split ", buffers_retired_,
@@ -46,7 +47,7 @@ void FileOutputStream::EnqueueEntry(const proto::Entry& entry) {
   if (cache_ == &default_cache_ || buffers_.empty()) {
     {
       google::protobuf::io::CodedOutputStream coded_stream(stream_);
-      coded_stream.WriteVarint32(entry.ByteSize());
+      coded_stream.WriteVarint32(entry.ByteSizeLong());
       entry.SerializeToCodedStream(&coded_stream);
     }
     if (flush_after_each_entry_) {
@@ -55,7 +56,7 @@ void FileOutputStream::EnqueueEntry(const proto::Entry& entry) {
     return;
   }
 
-  size_t entry_size = entry.ByteSize();
+  size_t entry_size = entry.ByteSizeLong();
   size_t size_size =
       google::protobuf::io::CodedOutputStream::VarintSize32(entry_size);
   size_t size_delta = entry_size + size_size;

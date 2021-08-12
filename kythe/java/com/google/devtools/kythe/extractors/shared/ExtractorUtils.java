@@ -23,6 +23,7 @@ import static com.google.common.hash.Hashing.sha256;
 import static java.util.stream.Collectors.toCollection;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Streams;
 import com.google.common.io.Files;
@@ -37,7 +38,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -56,15 +56,16 @@ import java.util.function.Function;
  *   <li>converting from byte[] to FileData
  * </ul>
  */
-// TODO: Split this class by domain.
 public class ExtractorUtils {
+  private ExtractorUtils() {}
+
   public static final Comparator<FileInput> FILE_INPUT_COMPARATOR =
       Comparator.comparing(FileInput::getInfo, Comparator.comparing(FileInfo::getPath));
 
   /**
    * Creates fully populated FileInput protocol buffers based on a provided set of files.
    *
-   * @param filePathToFileDatas map with file contents.
+   * @param filePathToFileContents map with file contents.
    * @return fully populated FileInput protos
    */
   public static List<FileData> convertBytesToFileDatas(
@@ -78,6 +79,13 @@ public class ExtractorUtils {
 
   public static FileData createFileData(String path, byte[] content) {
     return createFileData(path, getContentDigest(content), content);
+  }
+
+  private static FileData createFileData(String path, String digest, byte[] content) {
+    return FileData.newBuilder()
+        .setContent(ByteString.copyFrom(content))
+        .setInfo(FileInfo.newBuilder().setDigest(digest).setPath(path))
+        .build();
   }
 
   public static List<FileData> processRequiredInputs(Iterable<String> files)
@@ -116,15 +124,15 @@ public class ExtractorUtils {
     return result;
   }
 
-  public static List<FileInput> toFileInputs(Iterable<FileData> fileDatas) {
-    return toFileInputs(FileVNames.staticCorpus(""), p -> p, fileDatas);
-  }
-
   public static Function<String, String> makeRelativizer(final Path rootDir) {
     return p -> tryMakeRelative(rootDir, Paths.get(p));
   }
 
-  public static List<FileInput> toFileInputs(
+  public static ImmutableList<FileInput> toFileInputs(Iterable<FileData> fileDatas) {
+    return toFileInputs(FileVNames.staticCorpus(""), p -> p, fileDatas);
+  }
+
+  public static ImmutableList<FileInput> toFileInputs(
       FileVNames fileVNames, Function<String, String> relativize, Iterable<FileData> fileDatas) {
     return Streams.stream(fileDatas)
         .map(
@@ -166,11 +174,11 @@ public class ExtractorUtils {
     return USER_DIR.value();
   }
 
-  public static String digestForPath(String path) throws NoSuchAlgorithmException, IOException {
+  public static String digestForPath(String path) throws IOException {
     return digestForFile(new File(path));
   }
 
-  public static String digestForFile(File file) throws NoSuchAlgorithmException, IOException {
+  public static String digestForFile(File file) throws IOException {
     return getContentDigest(Files.toByteArray(file));
   }
 
@@ -188,12 +196,5 @@ public class ExtractorUtils {
     builder.addAllRequiredInput(oldRequiredInputs);
     existingCompilationUnit = builder.build();
     return existingCompilationUnit;
-  }
-
-  private static FileData createFileData(String path, String digest, byte[] content) {
-    return FileData.newBuilder()
-        .setContent(ByteString.copyFrom(content))
-        .setInfo(FileInfo.newBuilder().setDigest(digest).setPath(path))
-        .build();
   }
 }

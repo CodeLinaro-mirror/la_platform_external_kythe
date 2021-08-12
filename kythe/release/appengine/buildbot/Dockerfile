@@ -12,29 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM debian:buster
+FROM ubuntu:focal
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y \
-      # Buildbot dependencies
-      python3 python3-dev python3-pip wget git \
-      # Linter dependencies
-      arcanist clang-format shellcheck \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      # Buildbot and pre-commit dependencies
+      python python3 python3-dev python3-pip wget git \
       # Required by go tool build of Kythe
       golang-go libleveldb-dev libbrotli-dev \
       # Bazel's fallback @local_jdk
       openjdk-11-jdk \
       # Bazel dependencies
-      pkg-config zip g++ zlib1g-dev unzip \
+      zip zlib1g-dev unzip \
       # Kythe C++ dependencies
-      gcc uuid-dev flex clang bison \
+      clang-11 uuid-dev flex bison \
+      # Linter dependencies
+      shellcheck clang-format-11 \
       # Kythe misc dependencies
-      asciidoc source-highlight graphviz curl parallel jq && \
+      asciidoc ruby-dev source-highlight graphviz curl parallel jq && \
     apt-get clean
 
-# Install Buildbot
+# Make clang-11 the default
+RUN update-alternatives \
+      --install /usr/bin/clang        clang        /usr/bin/clang-11    100 \
+      --slave   /usr/bin/clang++      clang++      /usr/bin/clang++-11      \
+      --slave   /usr/bin/clang-format clang-format /usr/bin/clang-format-11
+
+# Install pip-packages
 RUN pip3 install --upgrade pip
+RUN pip3 install pre-commit
 RUN pip3 install buildbot
 RUN pip3 install buildbot-www buildbot-console-view buildbot-grid-view buildbot-waterfall-view psycopg2-binary txrequests
 RUN pip3 install --upgrade six service_identity pyasn1 cryptography pyopenssl
@@ -45,9 +52,9 @@ RUN go get github.com/bazelbuild/buildtools/buildifier
 RUN go get golang.org/x/lint/golint
 RUN go get honnef.co/go/tools/cmd/staticcheck
 ENV PATH=$PATH:/root/go/bin
-RUN wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar && \
-   mv google-java-format-1.7-all-deps.jar /usr/bin/google-java-format.jar && \
-   echo 'exec java -jar /usr/bin/google-java-format.jar "$@"' >/usr/bin/google-java-format && \
+RUN wget https://github.com/google/google-java-format/releases/download/google-java-format-1.9/google-java-format-1.9-all-deps.jar && \
+   mv google-java-format-1.9-all-deps.jar /usr/bin/google-java-format.jar && \
+   /bin/echo -e '#!/bin/sh\nexec java -jar /usr/bin/google-java-format.jar "$@"' >/usr/bin/google-java-format && \
    chmod +x /usr/bin/google-java-format
 
 # Install Bazelisk and wrapper script
@@ -62,6 +69,7 @@ ADD bazelrc /root/.bazelrc
 ADD start.sh /buildbot/
 ADD worker /buildbot/worker
 ADD master /buildbot/master
+
 ADD secrets.tar /buildbot
 RUN buildbot checkconfig /buildbot/master/master.cfg
 

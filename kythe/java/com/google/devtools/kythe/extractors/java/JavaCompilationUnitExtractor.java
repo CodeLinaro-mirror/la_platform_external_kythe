@@ -136,7 +136,7 @@ public class JavaCompilationUnitExtractor {
    * required inputs.
    */
   public static class ExtractionTask implements AutoCloseable {
-    private final TemporaryDirectory tempDir = new TemporaryDirectory();
+    private final TemporaryDirectory tempDir;
 
     // Can only be intiailized once the task is created.
     private Symtab symbolTable;
@@ -148,7 +148,9 @@ public class JavaCompilationUnitExtractor {
     private final UsageAsInputReportingFileManager fileManager =
         JavaCompilationUnitExtractor.getFileManager(compiler, diagnosticCollector);
 
-    ExtractionTask() throws ExtractionException {}
+    ExtractionTask() throws ExtractionException {
+      this.tempDir = new TemporaryDirectory();
+    }
 
     public UsageAsInputReportingFileManager getFileManager() {
       return fileManager;
@@ -515,7 +517,7 @@ public class JavaCompilationUnitExtractor {
    * is needed as the sharded analysis will need to resolve dependent source files. Also locates
    * sources that do not follow the package == path convention and list them as explicit sources.
    */
-  private Collection<String> getAdditionalSourcePaths(
+  private ImmutableList<String> getAdditionalSourcePaths(
       Iterable<? extends CompilationUnitTree> compilationUnits) {
     ImmutableList.Builder<String> results = new ImmutableList.Builder<>();
     for (CompilationUnitTree compilationUnit : compilationUnits) {
@@ -1014,8 +1016,7 @@ public class JavaCompilationUnitExtractor {
    * {@link List}.
    */
   private static ImmutableList<String> completeCompilerOptions(
-      Iterable<String> rawOptions, Path tempDestinationDir) throws ExtractionException {
-
+      Iterable<String> rawOptions, Path tempDestinationDir) {
     return ModifiableOptions.of(rawOptions)
         .removeUnsupportedOptions()
         .ensureEncodingSet(StandardCharsets.UTF_8)

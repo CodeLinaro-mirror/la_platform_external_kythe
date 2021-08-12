@@ -23,6 +23,7 @@
 #include "absl/flags/flag.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/CommentLexer.h"
@@ -271,29 +272,28 @@ const clang::Decl* FindImplicitDeclForStmt(
   return nullptr;
 }
 
-template <typename T>
-std::string DumpString(const T& val) {
+template <typename T, typename... Tail>
+std::string DumpString(const T& val, Tail&&... tail) {
   std::string s;
   llvm::raw_string_ostream ss(s);
-  val.dump(ss);
+  val.dump(ss, std::forward<Tail>(tail)...);
   return s;
 }
 
-template <typename T>
-std::string DumpString(const T& val, clang::SourceManager& source_manager) {
-  std::string s;
-  llvm::raw_string_ostream ss(s);
-  val.dump(ss, source_manager);
-  return s;
+bool IsCompleteAggregateType(clang::QualType Type) {
+  if (Type.isNull()) {
+    return false;
+  }
+  Type = Type.getCanonicalType();
+  return !Type->isIncompleteType() && Type->isAggregateType();
 }
 
 llvm::SmallVector<const clang::Decl*, 5> GetInitExprDecls(
     const clang::InitListExpr* ILE) {
   CHECK(ILE->isSemanticForm());
   QualType Type = ILE->getType();
-  if (!Type->isAggregateType() ||
-      // Ignore copy initialization.
-      (ILE->getNumInits() == 1 && ILE->getInit(0)->getType() == Type)) {
+  // Ignore non-aggregate and copy initialization.
+  if (!IsCompleteAggregateType(Type) || ILE->isTransparent()) {
     return {};
   }
   if (const clang::FieldDecl* Field = ILE->getInitializedFieldInUnion()) {
@@ -308,11 +308,41 @@ llvm::SmallVector<const clang::Decl*, 5> GetInitExprDecls(
   }
   if (const auto* Decl = Type->getAsRecordDecl();
       Decl && (Decl = Decl->getDefinition())) {
-    for (const clang::Decl* Field : Decl->fields()) {
-      result.push_back(Field);
+    for (const auto* Field : Decl->fields()) {
+      if (!Field->isUnnamedBitfield()) {
+        result.push_back(Field);
+      }
     }
   }
   return result;
+}
+
+clang::InitListExpr* GetSemanticForm(clang::InitListExpr* ILE) {
+  return (ILE->isSemanticForm() ? ILE : ILE->getSemanticForm());
+}
+
+clang::InitListExpr* GetSyntacticForm(clang::InitListExpr* ILE) {
+  return (ILE->isSyntacticForm() ? ILE : ILE->getSyntacticForm());
+}
+
+const clang::InitListExpr* GetSyntacticForm(const clang::InitListExpr* ILE) {
+  return (ILE->isSyntacticForm() ? ILE : ILE->getSyntacticForm());
+}
+
+clang::Decl* GetInfluencedDeclFromLExpression(clang::Expr* lhs) {
+  if (auto* expr = llvm::dyn_cast_or_null<clang::DeclRefExpr>(lhs);
+      expr != nullptr && expr->getFoundDecl() != nullptr &&
+      (expr->getFoundDecl()->getKind() == clang::Decl::Kind::Var ||
+       expr->getFoundDecl()->getKind() == clang::Decl::Kind::ParmVar)) {
+    return expr->getFoundDecl();
+  }
+  if (auto* expr = llvm::dyn_cast_or_null<clang::MemberExpr>(lhs);
+      expr != nullptr) {
+    if (auto* member = expr->getMemberDecl(); member != nullptr) {
+      return member;
+    }
+  }
+  return nullptr;
 }
 
 }  // anonymous namespace
@@ -463,7 +493,7 @@ const IndexedParentMap* IndexerASTVisitor::getAllParents() {
 }
 
 const IndexedParent* IndexerASTVisitor::getIndexedParent(
-    const ast_type_traits::DynTypedNode& Node) {
+    const DynTypedNode& Node) {
   return getAllParents()->GetIndexedParent(Node);
 }
 
@@ -528,6 +558,25 @@ void IndexerASTVisitor::RecordCallEdges(const GraphObserver::Range& Range,
   } else {
     for (const auto& Caller : Job->BlameStack.back()) {
       Observer.recordCallEdge(Range, Caller, Callee, IsImplicit(Range));
+    }
+  }
+}
+
+void IndexerASTVisitor::RecordBlame(const clang::Decl* Decl,
+                                    const GraphObserver::Range& Range) {
+  if (ShouldHaveBlameContext(Decl)) {
+    if (Job->BlameStack.empty()) {
+      if (auto FileId = Observer.recordFileInitializer(Range)) {
+        Observer.recordBlameLocation(Range, *FileId,
+                                     GraphObserver::Claimability::Unclaimable,
+                                     this->IsImplicit(Range));
+      }
+    } else {
+      for (const auto& Context : Job->BlameStack.back()) {
+        Observer.recordBlameLocation(Range, Context,
+                                     GraphObserver::Claimability::Unclaimable,
+                                     this->IsImplicit(Range));
+      }
     }
   }
 }
@@ -1016,11 +1065,96 @@ bool IndexerASTVisitor::TraverseCXXConstructorDecl(
          TraverseDeclarationNameInfo(DNI);
 }
 
+namespace {
+
+/// \return the location of the template `Decl` implicitly instantiates,
+/// or an invalid location of `Decl` does not implicitly instantiate a template.
+clang::SourceLocation GetImplicitlyInstantiatedTemplateLoc(
+    const clang::Decl* Decl) {
+  if (const auto* fun = llvm::dyn_cast_or_null<clang::FunctionDecl>(Decl)) {
+    if (auto* msi = fun->getMemberSpecializationInfo();
+        msi != nullptr && !msi->isExplicitSpecialization()) {
+      return msi->getInstantiatedFrom()->getBeginLoc();
+    } else if (auto* ftsi = fun->getTemplateSpecializationInfo();
+               ftsi != nullptr &&
+               !ftsi->isExplicitInstantiationOrSpecialization()) {
+      return ftsi->getTemplate()->getBeginLoc();
+    } else {
+      return clang::SourceLocation{};
+    }
+  } else if (const auto* rec =
+                 llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(
+                     Decl)) {
+    if (rec->isExplicitInstantiationOrSpecialization()) {
+      return clang::SourceLocation{};
+    }
+    auto from = rec->getInstantiatedFrom();
+    if (from.isNull()) {
+      return clang::SourceLocation{};
+    }
+    if (const auto* partial =
+            from.dyn_cast<clang::ClassTemplatePartialSpecializationDecl*>()) {
+      return partial->getBeginLoc();
+    } else {
+      const auto* primary = from.dyn_cast<clang::ClassTemplateDecl*>();
+      return primary->getBeginLoc();
+    }
+  } else if (const auto* var =
+                 llvm::dyn_cast_or_null<clang::VarTemplateSpecializationDecl>(
+                     Decl)) {
+    if (var->isExplicitInstantiationOrSpecialization()) {
+      return clang::SourceLocation{};
+    }
+    auto from = var->getInstantiatedFrom();
+    if (from.isNull()) {
+      return clang::SourceLocation{};
+    }
+    if (const auto* partial =
+            from.dyn_cast<clang::VarTemplatePartialSpecializationDecl*>()) {
+      return partial->getBeginLoc();
+    } else {
+      const auto* primary = from.dyn_cast<clang::VarTemplateDecl*>();
+      return primary->getBeginLoc();
+    }
+  } else {
+    return clang::SourceLocation{};
+  }
+}
+
+}  // anonymous namespace
+
+bool IndexerASTVisitor::ShouldIndex(const clang::Decl* Decl) {
+  // This function effectively returns true if:
+  //   - There is no TemplateInstanceExcludePathPattern specified.
+  //   - `Decl` is not a template instantiation or specialization.
+  //   - `Decl` is an explicit template instantiation or partial specialization.
+  //   - `Decl` is an implicit template instantiation that appears in a
+  //     concrete location (not a macro) with a path that is not matched by
+  //     TemplateInstanceExcludePathPattern.
+  if (TemplateInstanceExcludePathPattern == nullptr) {
+    return true;
+  }
+  auto loc = GetImplicitlyInstantiatedTemplateLoc(Decl);
+  loc = Observer.getSourceManager()->getSpellingLoc(loc);
+  if (loc.isInvalid()) {
+    return true;
+  }
+  auto file = Observer.getSourceManager()->getFilename(loc);
+  if (file.empty()) {
+    return true;
+  }
+  if (re2::RE2::FullMatch({file.data(), file.size()},
+                          *TemplateInstanceExcludePathPattern)) {
+    return false;
+  }
+  return true;
+}
+
 bool IndexerASTVisitor::TraverseDecl(clang::Decl* Decl) {
   if (ShouldStopIndexing()) {
     return false;
   }
-  if (Decl == nullptr) {
+  if (Decl == nullptr || !ShouldIndex(Decl)) {
     return true;
   }
 
@@ -1212,12 +1346,19 @@ bool IndexerASTVisitor::VisitMemberExpr(const clang::MemberExpr* E) {
     auto Range = NormalizeRange(E->getMemberLoc());
     auto StmtId = BuildNodeIdForImplicitStmt(E);
     if (auto RCC = RangeInCurrentContext(StmtId, Range)) {
-      Observer.recordDeclUseLocation(
-          RCC.value(), BuildNodeIdForRefToDecl(FieldDecl),
-          GraphObserver::Claimability::Unclaimable, IsImplicit(RCC.value()));
+      RecordBlame(FieldDecl, *RCC);
+      auto semantic = IsUsedAsWrite(*getAllParents(), E)
+                          ? GraphObserver::UseKind::kWrite
+                          : GraphObserver::UseKind::kUnknown;
+      Observer.recordSemanticDeclUseLocation(
+          *RCC, BuildNodeIdForRefToDecl(FieldDecl), semantic,
+          GraphObserver::Claimability::Unclaimable, IsImplicit(*RCC));
       if (E->hasExplicitTemplateArgs()) {
         // We still want to link the template args.
         BuildTemplateArgumentList(E->template_arguments());
+      }
+      if (DataflowEdges && !Job->InfluenceSets.empty()) {
+        Job->InfluenceSets.back().insert(FieldDecl);
       }
     }
   }
@@ -1475,6 +1616,11 @@ bool IndexerASTVisitor::VisitCallExpr(const clang::CallExpr* E) {
       if (auto CalleeId = BuildNodeIdForExpr(CE, EmitRanges::Yes)) {
         RecordCallEdges(RCC.value(), CalleeId.value());
       }
+    }
+  }
+  if (DataflowEdges) {
+    if (!Job->InfluenceSets.empty() && E->getDirectCallee() != nullptr) {
+      Job->InfluenceSets.back().insert(E->getDirectCallee());
     }
   }
   return true;
@@ -1889,25 +2035,156 @@ bool IndexerASTVisitor::VisitDesignatedInitExpr(
 bool IndexerASTVisitor::VisitInitListExpr(const clang::InitListExpr* ILE) {
   // We need the resolved type of the InitListExpr and all of the fields, but
   // don't want to do so redundantly for both syntactic and semantic forms.
-  if (!ILE->isSemanticForm() || ILE->getNumInits() == 0) return true;
+  // Skip emitting ref/init if there aren't any syntactic initializers.
+  const auto* SynILE = GetSyntacticForm(ILE);
+  if (!ILE->isSemanticForm() || SynILE->getNumInits() == 0) {
+    return true;
+  }
+
+  // SourceRange covering the *syntactic* initializers.
+  clang::SourceRange ListRange =
+      NormalizeRange({(*SynILE->inits().begin())->getBeginLoc(),
+                      (*SynILE->inits().rbegin())->getEndLoc()});
+  if (!ListRange.isValid()) {
+    return true;
+  }
 
   auto II = ILE->inits().begin();
   for (const clang::Decl* Decl : GetInitExprDecls(ILE)) {
     if (II == ILE->inits().end()) {
-      LOG(ERROR) << "Fewer initializers than decls:\n"
-                 << DumpString(*ILE, *Observer.getSourceManager());
+      LogErrorWithASTDump("Fewer initializers than decls:\n", ILE);
       break;
     }
-    const clang::Expr* Init = *II++;
-    if (auto RCC =
-            RangeInCurrentContext(BuildNodeIdForImplicitStmt(Init),
-                                  NormalizeRange(Init->getSourceRange()))) {
-      Observer.recordInitLocation(*RCC, BuildNodeIdForRefToDecl(Decl),
-                                  GraphObserver::Claimability::Unclaimable,
-                                  this->IsImplicit(*RCC));
+    // On rare occasions, the init Expr we get from clang is null.
+    if (const clang::Expr* Init = *II++) {
+      clang::SourceRange InitRange = NormalizeRange(Init->getSourceRange());
+      if (!(InitRange.isValid() && ListRange.fullyContains(InitRange))) {
+        // When visiting the semantic form initializers which aren't explicitly
+        // specified either have an invalid location (for uninitialized fields)
+        // or share a location with the end of the ILE (for default initialized
+        // fields). Skip these by checking that their location is wholly
+        // contained by the syntactic initializers, rather than the enclosing
+        // ILE itself.
+        continue;
+      }
+      if (auto RCC = RangeInCurrentContext(BuildNodeIdForImplicitStmt(Init),
+                                           InitRange)) {
+        Observer.recordInitLocation(*RCC, BuildNodeIdForRefToDecl(Decl),
+                                    GraphObserver::Claimability::Unclaimable,
+                                    this->IsImplicit(*RCC));
+      }
     }
   }
   return true;
+}
+
+bool IndexerASTVisitor::TraverseCallExpr(clang::CallExpr* CE) {
+  if (!DataflowEdges) {
+    return Base::TraverseCallExpr(CE);
+  }
+  auto callee = CE->getDirectCallee();
+  auto callee_exp = CE->getCallee();
+  bool valid = callee != nullptr && callee_exp != nullptr &&
+               CE->getNumArgs() <= callee->param_size();
+  // TODO(zarko): deal with parameter packs and varargs.
+  for (unsigned arg = 0; valid && arg < CE->getNumArgs(); ++arg) {
+    valid = CE->getArg(arg) != nullptr && callee->getParamDecl(arg) != nullptr;
+  }
+  if (valid) {
+    auto callee_node = BuildNodeIdForDecl(callee);
+    if (!WalkUpFromCallExpr(CE)) return false;
+    if (!TraverseStmt(callee_exp)) return false;
+    for (unsigned arg = 0; arg < CE->getNumArgs(); ++arg) {
+      auto scope_guard = PushScope(Job->InfluenceSets, {});
+      if (!TraverseStmt(CE->getArg(arg))) {
+        return false;
+      }
+      for (const auto* decl : Job->InfluenceSets.back()) {
+        Observer.recordInfluences(
+            BuildNodeIdForDecl(decl),
+            BuildNodeIdForDecl(callee->getParamDecl(arg)));
+      }
+    }
+    return true;
+  }
+
+  return Base::TraverseCallExpr(CE);
+}
+
+bool IndexerASTVisitor::TraverseReturnStmt(clang::ReturnStmt* RS) {
+  if (!DataflowEdges) {
+    return Base::TraverseReturnStmt(RS);
+  }
+  if (auto rv = RS->getRetValue(); rv != nullptr && !Job->BlameStack.empty()) {
+    if (!WalkUpFromReturnStmt(RS)) return false;
+    auto scope_guard = PushScope(Job->InfluenceSets, {});
+    if (!TraverseStmt(rv)) return false;
+    for (const auto* decl : Job->InfluenceSets.back()) {
+      for (const auto& context : Job->BlameStack.back()) {
+        Observer.recordInfluences(BuildNodeIdForDecl(decl), context);
+      }
+    }
+    return true;
+  }
+  return Base::TraverseReturnStmt(RS);
+}
+
+bool IndexerASTVisitor::TraverseVarDecl(clang::VarDecl* Decl) {
+  if (!DataflowEdges) {
+    return Base::TraverseVarDecl(Decl);
+  }
+  auto scope_guard = PushScope(Job->InfluenceSets, {});
+  if (!Base::TraverseVarDecl(Decl)) {
+    return false;
+  }
+  auto node = BuildNodeIdForDecl(Decl);
+  for (const auto* decl : Job->InfluenceSets.back()) {
+    Observer.recordInfluences(BuildNodeIdForDecl(decl), node);
+  }
+  return true;
+}
+
+bool IndexerASTVisitor::TraverseFieldDecl(clang::FieldDecl* Decl) {
+  if (!DataflowEdges) {
+    return Base::TraverseFieldDecl(Decl);
+  }
+  auto scope_guard = PushScope(Job->InfluenceSets, {});
+  // Note that this will report a field's bitfield width as influencing that
+  // field.
+  if (!Base::TraverseFieldDecl(Decl)) {
+    return false;
+  }
+  auto node = BuildNodeIdForDecl(Decl);
+  for (const auto* decl : Job->InfluenceSets.back()) {
+    Observer.recordInfluences(BuildNodeIdForDecl(decl), node);
+  }
+  return true;
+}
+
+bool IndexerASTVisitor::TraverseBinaryOperator(clang::BinaryOperator* BO) {
+  if (!DataflowEdges) {
+    return Base::TraverseBinaryOperator(BO);
+  }
+  if (BO->getOpcode() != clang::BO_Assign)
+    return Base::TraverseBinaryOperator(BO);
+
+  if (auto rhs = BO->getRHS(), lhs = BO->getLHS();
+      lhs != nullptr && rhs != nullptr) {
+    if (!WalkUpFromBinaryOperator(BO)) return false;
+    if (!TraverseStmt(lhs)) return false;
+    auto scope_guard = PushScope(Job->InfluenceSets, {});
+    if (!TraverseStmt(rhs)) {
+      return false;
+    }
+    if (auto* influenced = GetInfluencedDeclFromLExpression(lhs)) {
+      for (const auto* decl : Job->InfluenceSets.back()) {
+        Observer.recordInfluences(BuildNodeIdForDecl(decl),
+                                  BuildNodeIdForDecl(influenced));
+      }
+    }
+    return true;
+  }
+  return Base::TraverseBinaryOperator(BO);
 }
 
 bool IndexerASTVisitor::TraverseInitListExpr(clang::InitListExpr* ILE) {
@@ -1935,10 +2212,8 @@ bool IndexerASTVisitor::TraverseInitListExpr(clang::InitListExpr* ILE) {
     IndexerASTVisitor& parent;
   } visitor{{}, *this};
 
-  return visitor.TraverseSynOrSemInitListExpr(
-             ILE->isSyntacticForm() ? ILE : ILE->getSyntacticForm()) &&
-         Base::TraverseSynOrSemInitListExpr(
-             ILE->isSemanticForm() ? ILE : ILE->getSemanticForm());
+  return visitor.TraverseSynOrSemInitListExpr(GetSyntacticForm(ILE)) &&
+         Base::TraverseSynOrSemInitListExpr(GetSemanticForm(ILE));
 }
 
 NodeSet IndexerASTVisitor::RecordTypeLocSpellingLocation(clang::TypeLoc TL) {
@@ -2009,11 +2284,22 @@ bool IndexerASTVisitor::VisitDeclRefOrIvarRefExpr(
     auto StmtId = BuildNodeIdForImplicitStmt(Expr);
     if (auto RCC = RangeInCurrentContext(StmtId, Range)) {
       GraphObserver::NodeId DeclId = BuildNodeIdForRefToDecl(FoundDecl);
-      Observer.recordDeclUseLocation(RCC.value(), DeclId,
-                                     GraphObserver::Claimability::Unclaimable,
-                                     this->IsImplicit(RCC.value()));
+      RecordBlame(FoundDecl, *RCC);
+      auto semantic = IsUsedAsWrite(*getAllParents(), Expr)
+                          ? GraphObserver::UseKind::kWrite
+                          : GraphObserver::UseKind::kUnknown;
+      if (DataflowEdges) {
+        if (!Job->InfluenceSets.empty() &&
+            (FoundDecl->getKind() == clang::Decl::Kind::Var ||
+             FoundDecl->getKind() == clang::Decl::Kind::ParmVar)) {
+          Job->InfluenceSets.back().insert(FoundDecl);
+        }
+      }
+      Observer.recordSemanticDeclUseLocation(
+          *RCC, DeclId, semantic, GraphObserver::Claimability::Unclaimable,
+          this->IsImplicit(*RCC));
       for (const auto& S : Supports) {
-        S->InspectDeclRef(*this, SL, RCC.value(), DeclId, FoundDecl);
+        S->InspectDeclRef(*this, SL, *RCC, DeclId, FoundDecl);
       }
     }
   }
@@ -3050,6 +3336,21 @@ bool IndexerASTVisitor::VisitFunctionDecl(clang::FunctionDecl* Decl) {
                 ? GraphObserver::Specificity::UniquelyCompletes
                 : GraphObserver::Specificity::Completes,
             OuterNode);
+
+        if (DataflowEdges) {
+          Observer.recordInfluences(OuterNode, TargetDecl);
+
+          if (Decl->param_size() == NextDecl->param_size()) {
+            for (size_t param = 0; param < Decl->param_size(); ++param) {
+              auto lhs = NextDecl->getParamDecl(param);
+              auto rhs = Decl->getParamDecl(param);
+              if (lhs != nullptr && rhs != nullptr) {
+                Observer.recordInfluences(BuildNodeIdForDecl(lhs),
+                                          BuildNodeIdForDecl(rhs));
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -3688,22 +3989,25 @@ IndexerASTVisitor::BuildNodeIdForTemplateName(const clang::TemplateName& Name) {
     }
     case TemplateName::OverloadedTemplate:
       CHECK(IgnoreUnimplemented) << "TN.OverloadedTemplate";
-      break;
+      return absl::nullopt;
+    case TemplateName::AssumedTemplate:
+      CHECK(IgnoreUnimplemented) << "TN.AssumedTemplate";
+      return absl::nullopt;
     case TemplateName::QualifiedTemplate:
       CHECK(IgnoreUnimplemented) << "TN.QualifiedTemplate";
-      break;
+      return absl::nullopt;
     case TemplateName::DependentTemplate:
       CHECK(IgnoreUnimplemented) << "TN.DependentTemplate";
-      break;
+      return absl::nullopt;
     case TemplateName::SubstTemplateTemplateParm:
       CHECK(IgnoreUnimplemented) << "TN.SubstTemplateTemplateParmParm";
-      break;
+      return absl::nullopt;
     case TemplateName::SubstTemplateTemplateParmPack:
       CHECK(IgnoreUnimplemented) << "TN.SubstTemplateTemplateParmPack";
-      break;
-    default:
-      LOG(FATAL) << "Unexpected TemplateName kind!";
+      return absl::nullopt;
   }
+  CHECK(IgnoreUnimplemented)
+      << "Unexpected TemplateName kind: " << Name.getKind();
   return absl::nullopt;
 }
 
@@ -4527,6 +4831,8 @@ NodeSet IndexerASTVisitor::BuildNodeSetForTypeInternal(const clang::Type& T) {
     UNSUPPORTED_CLANG_TYPE(Pipe);
     UNSUPPORTED_CLANG_TYPE(DependentVector);
     UNSUPPORTED_CLANG_TYPE(MacroQualified);
+    UNSUPPORTED_CLANG_TYPE(ConstantMatrix);
+    UNSUPPORTED_CLANG_TYPE(DependentSizedMatrix);
   }
 #undef UNSUPPORTED_CLANG_TYPE
 #undef DELEGATE_TYPE
@@ -5348,7 +5654,7 @@ IndexerASTVisitor::CreateObjCMethodTypeNode(const clang::ObjCMethodDecl* MD) {
                                  NodeIds);
 }
 
-void IndexerASTVisitor::LogErrorWithASTDump(const std::string& msg,
+void IndexerASTVisitor::LogErrorWithASTDump(absl::string_view msg,
                                             const clang::Decl* Decl) const {
   std::string s;
   llvm::raw_string_ostream ss(s);
@@ -5356,11 +5662,11 @@ void IndexerASTVisitor::LogErrorWithASTDump(const std::string& msg,
   LOG(ERROR) << msg << " :" << std::endl << s;
 }
 
-void IndexerASTVisitor::LogErrorWithASTDump(const std::string& msg,
+void IndexerASTVisitor::LogErrorWithASTDump(absl::string_view msg,
                                             const clang::Expr* Expr) const {
   std::string s;
   llvm::raw_string_ostream ss(s);
-  Expr->dump(ss);
+  Expr->dump(ss, Context);
   LOG(ERROR) << msg << " :" << std::endl << s;
 }
 
