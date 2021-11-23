@@ -164,8 +164,7 @@ cc_binary_host {
     ],
     shared_libs: [
         "libbase",
-        "libLLVM_host",
-        "libclang_cxx_host",
+        "libclang-cpp_host",
         "libziparchive",
     ],
     header_libs: [
