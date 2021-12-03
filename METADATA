@@ -12,6 +12,6 @@ third_party {
     type: GIT
     value: "https://github.com/kythe/kythe"
   }
-  version: "v0.0.52"
-  last_upgrade_date { year: 2021 month: 06 day: 29 }
+  version: "v0.0.55"
+  last_upgrade_date { year: 2021 month: 12 day: 03 }
 }

@@ -1,6 +1,7 @@
 load("@rules_java//java:defs.bzl", "java_library")
 load("//tools/build_rules/verifier_test:java_verifier_test.bzl", "java_verifier_test")
 load("//kythe/java/com/google/devtools/kythe/extractors/java/bazel:aspect.bzl", "extract_java")
+load("//kythe/go/test/tools/empty_corpus_checker:empty_corpus_test.bzl", "empty_corpus_test")
 
 java_library(
     name = "pkg",
@@ -188,7 +189,6 @@ java_verifier_test(
     verifier_deps = [":jvm_files_tests"],
 )
 
-# TODO(#1501): This test currently fails
 java_verifier_test(
     name = "generic_class_tests",
     size = "small",
@@ -216,10 +216,6 @@ java_verifier_test(
     name = "generic_method_ref_tests",
     size = "small",
     srcs = ["GenericMethodRef.java"],
-    tags = [
-        "arc-ignore",
-        "manual",
-    ],
 )
 
 java_verifier_test(
@@ -252,6 +248,18 @@ java_verifier_test(
     ],
     meta = [
         "Metadata.java.meta",
+    ],
+    deps = ["@maven//:org_apache_tomcat_tomcat_annotations_api"],
+)
+
+java_verifier_test(
+    name = "inline_metadata_tests",
+    srcs = [
+        "InlineMetadata.java",
+    ],
+    indexer_opts = [
+        "--verbose",
+        "--default_metadata_corpus=default",
     ],
     deps = ["@maven//:org_apache_tomcat_tomcat_annotations_api"],
 )
@@ -353,6 +361,18 @@ java_verifier_test(
     name = "static_variable_tests",
     size = "small",
     srcs = ["StaticVariables.java"],
+)
+
+java_verifier_test(
+    name = "visibility_tests",
+    size = "small",
+    srcs = ["Visibility.java"],
+)
+
+java_verifier_test(
+    name = "modifier_tests",
+    size = "small",
+    srcs = ["Modifiers.java"],
 )
 
 java_verifier_test(
@@ -503,4 +523,29 @@ java_library(
 java_verifier_test(
     name = "abstract_class_test",
     compilation = ":abstract_class",
+)
+
+java_library(
+    name = "default_corpus",
+    srcs = ["DefaultCorpus.java"],
+)
+
+java_verifier_test(
+    name = "default_corpus_test",
+    compilation = ":default_corpus",
+    indexer_opts = [
+        "--verbose",
+        "--use_compilation_corpus_as_default",
+    ],
+)
+
+empty_corpus_test(
+    name = "empty_corpus_test",
+    # TODO(justinbuchanan): adjust extractor to assign 'kythe' instead of
+    # 'bazel_tools' corpus to files such java/lang/Object.java, etc.
+    allowed_corpora = [
+        "bazel_tools",
+        "kythe",
+    ],
+    entries = ":default_corpus_test_entries.entries.gz",
 )

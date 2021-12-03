@@ -13,8 +13,10 @@
 // limitations under the License.
 
 use crate::error::KytheError;
+use crate::proxyrequests;
 use protobuf::{self, CodedOutputStream, Message};
-use std::io::Write;
+use serde_json::Value;
+use std::io::{self, Write};
 use storage_rust_proto::*;
 
 /// A trait for writing Kythe graph entries to an output.
@@ -70,6 +72,78 @@ impl<'a> KytheWriter for CodedOutputStreamWriter<'a> {
 
     fn flush(&mut self) -> Result<(), KytheError> {
         self.output_stream.flush().map_err(KytheError::WriterError)
+    }
+}
+
+/// A [KytheWriter] that communicates with the analysis driver proxy
+pub struct ProxyWriter {
+    buffer: Vec<String>,
+}
+
+impl ProxyWriter {
+    /// Create a new instance of ProxyWriter
+    ///
+    /// Takes a writer that implements the `Write` trait as the only argument.
+    pub fn new() -> ProxyWriter {
+        Self { buffer: Vec::new() }
+    }
+}
+
+impl Default for ProxyWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl KytheWriter for ProxyWriter {
+    /// Given an [Entry], writes the entry to the buffer.
+    /// If the buffer reaches size 1000, automatically flush to the proxy.
+    ///
+    /// # Errors
+    ///
+    /// An error is returned if the write fails.
+    fn write_entry(&mut self, entry: Entry) -> Result<(), KytheError> {
+        let bytes = entry.write_to_bytes().map_err(KytheError::WriterError)?;
+        self.buffer.push(base64::encode(&bytes));
+        if self.buffer.len() >= 1000 {
+            self.flush()?;
+        }
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<(), KytheError> {
+        // Write the proxy command to output
+        let request = proxyrequests::output(self.buffer.clone())?;
+        self.buffer.clear();
+        println!("{}", request);
+        io::stdout().flush().map_err(|err| {
+            KytheError::IndexerError(format!("Failed to flush stdout: {:?}", err))
+        })?;
+
+        // Read the response from the proxy
+        let mut response_string = String::new();
+        io::stdin().read_line(&mut response_string).map_err(|err| {
+            KytheError::IndexerError(format!(
+                "Failed to read proxy file response from stdin: {:?}",
+                err
+            ))
+        })?;
+
+        // Convert to json and extract information
+        let response: Value = serde_json::from_str(&response_string).map_err(|err| {
+            KytheError::IndexerError(format!(
+                "Failed to read proxy file response from stdin: {:?}",
+                err
+            ))
+        })?;
+        if response["rsp"].as_str().unwrap() == "error" {
+            Err(KytheError::IndexerError(format!(
+                "Got error back from proxy after sending entries: {}",
+                response["args"].as_str().unwrap()
+            )))
+        } else {
+            Ok(())
+        }
     }
 }
 

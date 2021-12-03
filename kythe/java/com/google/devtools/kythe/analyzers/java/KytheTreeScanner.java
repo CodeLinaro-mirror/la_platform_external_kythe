@@ -16,6 +16,8 @@
 
 package com.google.devtools.kythe.analyzers.java;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import com.google.common.base.Ascii;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -337,9 +339,8 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
     // initializers. But there's no harm in emitting the same fact twice!
     getScope(ctx).forEach(scope -> entrySets.emitEdge(classNode, EdgeKind.CHILDOF, scope));
 
-    if (classDef.getModifiers().getFlags().contains(Modifier.STATIC)) {
-      emitStatic(classNode);
-    }
+    emitModifiers(classNode, classDef.getModifiers());
+    emitVisibility(classNode, classDef.getModifiers(), ctx);
 
     NestingKind nestingKind = classDef.sym.getNestingKind();
     if (nestingKind != NestingKind.LOCAL
@@ -386,10 +387,6 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
     emitAnchor(ctx, EdgeKind.DEFINES, classNode);
     if (!documented) {
       emitComment(classDef, classNode);
-    }
-
-    if (classDef.getModifiers().getFlags().contains(Modifier.ABSTRACT)) {
-      entrySets.getEmitter().emitFact(classNode, "/kythe/tag/abstract", "");
     }
 
     visitAnnotations(classNode, classDef.getModifiers().getAnnotations(), ctx);
@@ -439,7 +436,7 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
     for (JCTree member : classDef.getMembers()) {
       if (member instanceof JCMethodDecl) {
         JCMethodDecl method = (JCMethodDecl) member;
-        if (!method.sym.isConstructor()) {
+        if (method.sym == null || !method.sym.isConstructor()) {
           continue;
         }
 
@@ -538,9 +535,8 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
     VName methodNode =
         entrySets.getNode(signatureGenerator, methodDef.sym, signature.get(), markedSource, null);
     visitAnnotations(methodNode, methodDef.getModifiers().getAnnotations(), ctx);
-    if (methodDef.getModifiers().getFlags().contains(Modifier.STATIC)) {
-      emitStatic(methodNode);
-    }
+    emitModifiers(methodNode, methodDef.getModifiers());
+    emitVisibility(methodNode, methodDef.getModifiers(), ctx);
 
     EntrySet absNode =
         defineTypeParameters(
@@ -736,9 +732,11 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
     getScope(ctx).forEach(scope -> entrySets.emitEdge(varNode, EdgeKind.CHILDOF, scope));
     visitAnnotations(varNode, varDef.getModifiers().getAnnotations(), ctx);
 
+    emitModifiers(varNode, varDef.getModifiers());
+    if (varDef.sym.getKind().isField()) {
+      emitVisibility(varNode, varDef.getModifiers(), ctx);
+    }
     if (varDef.getModifiers().getFlags().contains(Modifier.STATIC)) {
-      emitStatic(varNode);
-
       if (varDef.sym.getKind().isField() && owner.getNode().getClassInit().isPresent()) {
         ctx.setNode(new JavaNode(owner.getNode().getClassInit().get()));
       }
@@ -901,11 +899,19 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
       return emitDiagnostic(ctx, "error analyzing class", null, null);
     }
 
-    // Span over "new Class"
-    Span refSpan =
-        new Span(filePositions.getStart(newClass), filePositions.getEnd(newClass.getIdentifier()));
+    Span refSpan;
+    if (newClass.getIdentifier() instanceof JCTypeApply) {
+      JCTree type = ((JCTypeApply) newClass.getIdentifier()).getType();
+      refSpan = new Span(filePositions.getStart(type), filePositions.getEnd(type));
+    } else {
+      refSpan =
+          new Span(
+              filePositions.getStart(newClass.getIdentifier()),
+              filePositions.getEnd(newClass.getIdentifier()));
+    }
+
     // Span over "new Class(...)"
-    Span callSpan = new Span(refSpan.getStart(), filePositions.getEnd(newClass));
+    Span callSpan = new Span(filePositions.getStart(newClass), filePositions.getEnd(newClass));
 
     if (owner.getTree().getTag() == JCTree.Tag.VARDEF) {
       JCVariableDecl varDef = (JCVariableDecl) owner.getTree();
@@ -1269,6 +1275,39 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
     return getScope(ctx);
   }
 
+  static enum Visibility {
+    PUBLIC("public"),
+    PACKAGE("package"),
+    PRIVATE("private"),
+    PROTECTED("protected");
+
+    private Visibility(String factValue) {
+      this.factValue = factValue;
+    }
+
+    final String factValue;
+
+    static Visibility get(JCModifiers modifiers, TreeContext ctx) {
+      if (modifiers.getFlags().contains(Modifier.PUBLIC)) {
+        return PUBLIC;
+      }
+      if (modifiers.getFlags().contains(Modifier.PRIVATE)) {
+        return PRIVATE;
+      }
+      if (modifiers.getFlags().contains(Modifier.PROTECTED)) {
+        return PROTECTED;
+      }
+      JCClassDecl parent = ctx.getClassParentDecl();
+      if (parent == null) {
+        return PACKAGE;
+      }
+      if (parent.getKind().equals(Kind.INTERFACE)) {
+        return PUBLIC;
+      }
+      return PACKAGE;
+    }
+  }
+
   private static ImmutableList<VName> getScope(TreeContext ctx) {
     return Optional.ofNullable(ctx.getScope())
         .map(TreeContext::getNode)
@@ -1439,8 +1478,28 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
     deprecation.ifPresent(d -> entrySets.getEmitter().emitFact(node, "/kythe/tag/deprecated", d));
   }
 
-  private void emitStatic(VName node) {
-    entrySets.getEmitter().emitFact(node, "/kythe/tag/static", "");
+  private void emitModifiers(VName node, JCModifiers modifiers) {
+    if (modifiers.getFlags().contains(Modifier.ABSTRACT)) {
+      entrySets.getEmitter().emitFact(node, "/kythe/tag/abstract", "");
+    }
+
+    if (modifiers.getFlags().contains(Modifier.STATIC)) {
+      entrySets.getEmitter().emitFact(node, "/kythe/tag/static", "");
+    }
+
+    if (modifiers.getFlags().contains(Modifier.VOLATILE)) {
+      entrySets.getEmitter().emitFact(node, "/kythe/tag/volatile", "");
+    }
+
+    if (modifiers.getFlags().contains(Modifier.DEFAULT)) {
+      entrySets.getEmitter().emitFact(node, "/kythe/tag/default", "");
+    }
+  }
+
+  private void emitVisibility(VName node, JCModifiers modifiers, TreeContext ctx) {
+    entrySets
+        .getEmitter()
+        .emitFact(node, "/kythe/visibility", Visibility.get(modifiers, ctx).factValue);
   }
 
   // Unwraps the target EntrySet and emits an edge to it from the sourceNode
@@ -1539,6 +1598,40 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
     }
   }
 
+  private void loadAnnotationsData(String fullPath, String metadataComment) {
+    Metadata newMetadata = metadataLoaders.parseFile(fullPath, metadataComment.getBytes(UTF_8));
+    if (newMetadata == null) {
+      logger.atWarning().log("Can't load metadata %s", fullPath);
+      return;
+    }
+    metadata.add(newMetadata);
+    metadataFilePaths.add(fullPath);
+  }
+
+  private void loadInlineMetadata(String metadataPrefix) {
+    metadataPrefix += ":";
+    String fullPath = filePositions.getSourceFile().toUri().getPath();
+    try {
+      if (metadataFilePaths.contains(fullPath)) {
+        return;
+      }
+      for (List<Comment> commentList : comments.values()) {
+        for (Comment comment : commentList) {
+          int index = comment.text.indexOf(metadataPrefix);
+          if (index != -1) {
+            loadAnnotationsData(
+                fullPath,
+                Metadata.ANNOTATION_COMMENT_INLINE_METADATA_PREFIX
+                    + comment.text.substring(index + metadataPrefix.length()));
+            break;
+          }
+        }
+      }
+    } catch (IllegalArgumentException ex) {
+      logger.atWarning().withCause(ex).log("Can't read metadata at %s", fullPath);
+    }
+  }
+
   private void loadAnnotationsFromClassDecl(JCClassDecl decl) {
     for (JCAnnotation annotation : decl.getModifiers().getAnnotations()) {
       Symbol annotationSymbol = null;
@@ -1567,6 +1660,9 @@ public class KytheTreeScanner extends JCTreeScanner<JavaNode, TreeContext> {
         String comments = (String) rhs.getValue();
         if (comments.startsWith(Metadata.ANNOTATION_COMMENT_PREFIX)) {
           loadAnnotationsFile(comments.substring(Metadata.ANNOTATION_COMMENT_PREFIX.length()));
+        } else if (comments.startsWith(Metadata.ANNOTATION_COMMENT_INLINE_METADATA_PREFIX)) {
+          loadInlineMetadata(
+              comments.substring(Metadata.ANNOTATION_COMMENT_INLINE_METADATA_PREFIX.length()));
         }
       }
     }
