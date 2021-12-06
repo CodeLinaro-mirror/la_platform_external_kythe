@@ -1,0 +1,24 @@
+diff --git a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+index 6a61b99f9..5cce43bb1 100644
+--- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+@@ -2,6 +2,7 @@
+ # See https://llvm.org/LICENSE.txt for license information.
+ # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
++load("@io_kythe//tools:build_rules/support.bzl", glob = "allow_empty_glob")
+ load("//llvm:tblgen.bzl", "gentbl")
+ load("//llvm:binary_alias.bzl", "binary_alias")
+ load("//llvm:cc_plugin_library.bzl", "cc_plugin_library")
+diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+index 93e905260..2c3cedcd9 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -2,6 +2,7 @@
+ # See https://llvm.org/LICENSE.txt for license information.
+ # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
++load("@io_kythe//tools:build_rules/support.bzl", glob = "allow_empty_glob")
+ load(":template_rule.bzl", "template_rule")
+ load(":tblgen.bzl", "gentbl")
+ load(":config.bzl", "llvm_config_defines")

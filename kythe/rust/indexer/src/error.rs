@@ -18,8 +18,8 @@ quick_error! {
     #[derive(Debug)]
     pub enum KytheError {
         /// The FileProvider failed to find the file
-        FileNotFoundError {
-            display("The requested file could not be found")
+        FileNotFoundError(name: String) {
+            display("The requested file could not be found: {}", name)
         }
         /// The FileProvider failed to read the file
         FileReadError(err: std::io::Error) {
@@ -40,6 +40,11 @@ quick_error! {
         ProtobufParseError(err: ProtobufError) {
             from()
             display("Failed to parse Protobuf: {}", err)
+        }
+        /// There was an issue serializing a type to JSON
+        JsonSerializationError(err: serde_json::Error) {
+            from()
+            display("JSON Serialization Error: {}", err)
         }
         /// The KytheWriter encounters an error
         WriterError(err: ProtobufError) {
