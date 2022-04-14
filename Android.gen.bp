@@ -1,5 +1,5 @@
 // Automatically generated with:
-// go2bp -rewrite github.com/google/go-cmp/cmp=go-cmp -rewrite google.golang.org/protobuf=golang-protobuf -rewrite github.com/beevik/etree=go-etree -rewrite bitbucket.org/creachadair=creachadair -rewrite github.com/google/subcommands=go-subcommands -rewrite golang.org/x=golang-x -rewrite kythe.io/kythe=kythe -rewrite gotool=go_extractor -limit kythe.io/kythe/go/extractors/config/runextractor -limit kythe.io/kythe/go/extractors/cmd/gotool -skip-tests
+// go2bp -rewrite github.com/google/go-cmp/cmp=go-cmp -rewrite google.golang.org/protobuf=golang-protobuf -rewrite github.com/beevik/etree=go-etree -rewrite bitbucket.org/creachadair=creachadair -rewrite github.com/google/subcommands=go-subcommands -rewrite golang.org/x=golang-x -rewrite kythe.io/kythe=kythe -rewrite gotool=go_extractor -limit kythe.io/kythe/go/extractors/config/runextractor -limit kythe.io/kythe/go/extractors/cmd/gotool -limit kythe.io/kythe/go/extractors/cmd/rust_extractor -skip-tests
 
 blueprint_go_binary {
     name: "go_extractor",
@@ -14,6 +14,19 @@ blueprint_go_binary {
     ],
     srcs: [
         "kythe/go/extractors/cmd/gotool/gotool.go",
+    ],
+}
+
+blueprint_go_binary {
+    name: "rust_extractor",
+    deps: [
+        "kythe-go-platform-kzip",
+        "kythe-go-util-vnameutil",
+        "kythe-proto-analysis_go_proto",
+        "kythe-proto-storage_go_proto",
+    ],
+    srcs: [
+        "kythe/go/extractors/cmd/rust_extractor/rust_extractor.go",
     ],
 }
 
