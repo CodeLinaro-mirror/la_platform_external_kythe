@@ -4042,6 +4042,9 @@ IndexerASTVisitor::BuildNodeIdForTemplateName(const clang::TemplateName& Name) {
     case TemplateName::SubstTemplateTemplateParmPack:
       CHECK(IgnoreUnimplemented) << "TN.SubstTemplateTemplateParmPack";
       return absl::nullopt;
+    case TemplateName::UsingTemplate:
+      CHECK(options_.IgnoreUnimplemented) << "TN.UsingTemplate";
+      return absl::nullopt;
   }
   CHECK(IgnoreUnimplemented)
       << "Unexpected TemplateName kind: " << Name.getKind();
