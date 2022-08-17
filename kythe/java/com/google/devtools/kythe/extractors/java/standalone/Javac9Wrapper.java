@@ -28,6 +28,8 @@ import com.sun.tools.javac.main.Option;
 import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.Options;
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -46,7 +48,27 @@ public class Javac9Wrapper extends AbstractJavacWrapper {
 
     JavacFileManager fileManager = new JavacFileManager(context, true, null);
     Arguments args = Arguments.instance(context);
-    args.init("kythe_javac", arguments);
+    // JDK changed the signature of Arguments.init method, support both
+    try {
+      try {
+        // JDK15+: the signature is
+        //     init(String, Iterable<String> args);
+        Arguments.class.getMethod("init", String.class, Iterable.class)
+          .invoke(args, "kythe_javac", (Object) Arrays.asList(arguments));
+      } catch (NoSuchMethodException nsme) {
+        // pre-JDK15:
+        //     init(String, String...);
+        Arguments.class.getMethod("init", String.class,String[].class)
+          .invoke(args, "kythe_javac", (Object)arguments);
+      }
+    } catch (NoSuchMethodException ns2) {
+      System.err.printf("Cannot locate com.sun.tools.javac.main.Arguments.init method, JDK version %s\n", System.getProperty("java.version"));
+      System.exit(2);
+    } catch (InvocationTargetException|IllegalAccessException ex) {
+      System.err.printf("Cannot call com.sun.tools.javac.main.Arguments.init (JDK version %s):\n%s\n", System.getProperty("java.version"), ex);
+      System.exit(2);
+    }
+
     fileManager.handleOptions(args.getDeferredFileManagerOptions());
     Options options = Options.instance(context);
 
