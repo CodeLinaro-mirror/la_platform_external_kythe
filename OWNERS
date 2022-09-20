@@ -3,3 +3,5 @@ ccross@google.com
 dwillemsen@google.com
 jungjw@google.com
 patricearruda@google.com
+
+include toolchain/llvm_android:master:/OWNERS

@@ -60,7 +60,7 @@ java_library_host {
         canonical_path_from_root: false,
     },
     static_libs: [
-        "gson-prebuilt-jar",
+        "gson",
         "libprotobuf-java-full",
         "libprotobuf-java-util-full",
         "guava",
