@@ -1,4 +1,4 @@
-load("@rules_rust//rust:rust.bzl", "rust_binary", "rust_clippy", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_clippy", "rust_library", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -8,20 +8,20 @@ rust_library(
         include = ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
-    edition = "2018",
+    edition = "2021",
     deps = [
         "//kythe/cxx/common:kzip_writer_c_api",
         "//kythe/proto:analysis_rust_proto",
-        "//kythe/rust/cargo:anyhow",
         "@com_google_absl//absl/status",
-        "@rules_rust//proto/raze:protobuf",
+        "@crate_index//:anyhow",
+        "@crate_index//:protobuf",
     ],
 )
 
 rust_test(
     name = "fuchsia_extractor_lib_test",
     crate = ":fuchsia_extractor_lib",
-    edition = "2018",
+    edition = "2021",
     # See https://github.com/bazelbuild/rules_rust/issues/118.  Without this,
     # rust binaries require their deps to be compiled with -fPIC, which is not
     # always the case. fastbuild and dbg use -fPIC, but opt does not; and rust
@@ -34,14 +34,14 @@ rust_test(
         "//conditions:default": [],
     }),
     deps = [
-        "//kythe/rust/cargo:tempdir",
+        "@crate_index//:tempdir",
     ],
 )
 
 rust_binary(
     name = "fuchsia_extractor",
     srcs = glob(["src/bin/**/*.rs"]),
-    edition = "2018",
+    edition = "2021",
     rustc_flags = select({
         ":if_opt": ["-Crelocation-model=static"],
         "//conditions:default": [],
@@ -49,17 +49,17 @@ rust_binary(
     deps = [
         ":fuchsia_extractor_lib",
         "//kythe/proto:analysis_rust_proto",
-        "//kythe/rust/cargo:anyhow",
-        "//kythe/rust/cargo:clap",
-        "//kythe/rust/cargo:hex",
-        "//kythe/rust/cargo:lazy_static",
-        "//kythe/rust/cargo:rayon",
-        "//kythe/rust/cargo:regex",
-        "//kythe/rust/cargo:rls_data",
-        "//kythe/rust/cargo:serde_json",
-        "//kythe/rust/cargo:sha2",
-        "//kythe/rust/cargo:tempdir",
-        "@rules_rust//proto/raze:protobuf",
+        "@crate_index//:anyhow",
+        "@crate_index//:clap",
+        "@crate_index//:hex",
+        "@crate_index//:lazy_static",
+        "@crate_index//:protobuf",
+        "@crate_index//:rayon",
+        "@crate_index//:regex",
+        "@crate_index//:rls-data",
+        "@crate_index//:serde_json",
+        "@crate_index//:sha2",
+        "@crate_index//:tempdir",
     ],
 )
 
@@ -70,7 +70,7 @@ rust_test(
         "//kythe/go/platform/tools/kzip",
         "//kythe/rust/fuchsia_extractor/testdata",
     ],
-    edition = "2018",
+    edition = "2021",
     # See https://github.com/bazelbuild/rules_rust/issues/118.  Without this,
     # rust binaries require their deps to be compiled with -fPIC, which is not
     # always the case. fastbuild and dbg use -fPIC, but opt does not; and rust
@@ -83,8 +83,8 @@ rust_test(
         "//conditions:default": [],
     }),
     deps = [
-        "//kythe/rust/cargo:serial_test",
-        "//kythe/rust/cargo:zip",
+        "@crate_index//:serial_test",
+        "@crate_index//:zip",
     ],
 )
 

@@ -1,7 +1,4 @@
-workspace(
-    name = "io_kythe",
-    managed_directories = {"@npm": ["node_modules"]},
-)
+workspace(name = "io_kythe")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
@@ -11,33 +8,9 @@ load("//:version.bzl", "MAX_VERSION", "MIN_VERSION", "check_version")
 # Bazel and our maximum supported version of Bazel.
 check_version(MIN_VERSION, MAX_VERSION)
 
-http_archive(
-    name = "bazel_toolchains",
-    sha256 = "179ec02f809e86abf56356d8898c8bd74069f1bd7c56044050c2cd3d79d0e024",
-    strip_prefix = "bazel-toolchains-4.1.0",
-    urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/releases/download/4.1.0/bazel-toolchains-4.1.0.tar.gz",
-        "https://github.com/bazelbuild/bazel-toolchains/releases/download/4.1.0/bazel-toolchains-4.1.0.tar.gz",
-    ],
-)
-
 load("//:setup.bzl", "kythe_rule_repositories")
 
 kythe_rule_repositories()
-
-# TODO(schroederc): remove this.  This needs to be loaded before loading the
-# go_* rules.  Normally, this is done by go_rules_dependencies in external.bzl,
-# but because we want to overload some of those dependencies, we need the go_*
-# rules before go_rules_dependencies.  Likewise, we can't precisely control
-# when loads occur within a Starlark file so we now need to load this
-# manually...
-load("@io_bazel_rules_go//go/private:repositories.bzl", "go_name_hack")
-
-maybe(
-    go_name_hack,
-    name = "io_bazel_rules_go_name_hack",
-    is_rules_go = False,
-)
 
 # gazelle:repository_macro external.bzl%_go_dependencies
 load("//:external.bzl", "kythe_dependencies")
@@ -56,18 +29,9 @@ load("@maven//:compat.bzl", "compat_repositories")
 
 compat_repositories()
 
-# If the configuration here changes, run tools/platforms/configs/rebuild.sh
-load("@bazel_toolchains//rules:environments.bzl", "clang_env")
-load("@bazel_toolchains//rules:rbe_repo.bzl", "rbe_autoconfig")
-load("//tools/platforms:toolchain_config_suite_spec.bzl", "DEFAULT_TOOLCHAIN_CONFIG_SUITE_SPEC")
+load("@maven//:defs.bzl", "pinned_maven_install")
 
-rbe_autoconfig(
-    name = "rbe_default",
-    env = clang_env(),
-    export_configs = True,
-    toolchain_config_suite_spec = DEFAULT_TOOLCHAIN_CONFIG_SUITE_SPEC,
-    use_legacy_platform_definition = False,
-)
+pinned_maven_install()
 
 load(
     "@bazelruby_rules_ruby//ruby:defs.bzl",
@@ -79,4 +43,93 @@ ruby_bundle(
     bundler_version = "2.1.4",
     gemfile = "//kythe/web/site:Gemfile",
     gemfile_lock = "//kythe/web/site:Gemfile.lock",
+)
+
+load("@rules_rust//crate_universe:defs.bzl", "crate", "crates_repository", "render_config")
+
+# Run `CARGO_BAZEL_REPIN=1 bazel sync --only=crate_index` after updating
+crates_repository(
+    name = "crate_index",
+    cargo_lockfile = "//:Cargo.Bazel.lock",
+    lockfile = "//:cargo-bazel-lock.json",
+    packages = {
+        "anyhow": crate.spec(
+            version = "1.0.58",
+        ),
+        "base64": crate.spec(
+            version = "0.13.0",
+        ),
+        "clap": crate.spec(
+            version = "2.34.0",
+        ),
+        "colored": crate.spec(
+            version = "2.0.0",
+        ),
+        "glob": crate.spec(
+            version = "0.3.0",
+        ),
+        "hex": crate.spec(
+            version = "0.4.3",
+        ),
+        "lazy_static": crate.spec(
+            version = "1.4.0",
+        ),
+        "quick-error": crate.spec(
+            version = "2.0.1",
+        ),
+        "path-clean": crate.spec(
+            version = "0.1.0",
+        ),
+        "rayon": crate.spec(
+            version = "1.5.3",
+        ),
+        "regex": crate.spec(
+            version = "1.5.6",
+        ),
+        "rls-analysis": crate.spec(
+            version = "0.18.3",
+        ),
+        "rls-data": crate.spec(
+            version = "0.19.1",
+        ),
+        "serde": crate.spec(
+            version = "1.0.137",
+        ),
+        "serde_json": crate.spec(
+            version = "1.0.64",
+        ),
+        "sha2": crate.spec(
+            version = "0.10.2",
+        ),
+        "tempdir": crate.spec(
+            version = "0.3.7",
+        ),
+        "zip": crate.spec(
+            version = "0.5.11",
+        ),
+        # Dev dependency for fuchsia extractor
+        "serial_test": crate.spec(
+            version = "0.6.0",
+        ),
+        # Dependencies for our Rust protobuf toolchain
+        "protobuf": crate.spec(
+            features = ["with-bytes"],
+            version = "=2.8.2",
+        ),
+        "protobuf-codegen": crate.spec(
+            version = "=2.8.2",
+        ),
+    },
+    render_config = render_config(
+        default_package_name = "",
+    ),
+)
+
+load("@crate_index//:defs.bzl", "crate_repositories")
+
+crate_repositories()
+
+# Register our Rust protobuf toolchain from the BUILD file
+register_toolchains(
+    ":rust_proto_toolchain",
 )

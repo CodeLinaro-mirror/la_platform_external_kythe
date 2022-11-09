@@ -19,19 +19,19 @@
 // results are available to the caller.
 //
 // Usage:
-//   var c golang.Extractor
-//   if _, err := c.Locate("fmt"); err != nil {
-//     log.Fatalf(`Unable to locate package "fmt": %v`, err)
-//   }
-//   c.Extract()
-//   for _, pkg := range c.Packages {
-//     if pkg.Err != nil {
-//       log.Printf("Error extracting %q: %v", pkg.Path, pkg.Err)
-//     } else {
-//       writeOutput(pkg)
-//     }
-//   }
 //
+//	var c golang.Extractor
+//	if _, err := c.Locate("fmt"); err != nil {
+//	  log.Fatalf(`Unable to locate package "fmt": %v`, err)
+//	}
+//	c.Extract()
+//	for _, pkg := range c.Packages {
+//	  if pkg.Err != nil {
+//	    log.Printf("Error extracting %q: %v", pkg.Path, pkg.Err)
+//	  } else {
+//	    writeOutput(pkg)
+//	  }
+//	}
 package golang // import "kythe.io/kythe/go/extractors/golang"
 
 import (
@@ -424,10 +424,11 @@ func (p *Package) addFiles(cu *apb.CompilationUnit, root, base string, names []s
 			// kythe/go/extractors/govname and is usually the package's
 			// repository root (e.g. github.com/golang/protobuf).
 			vn.Corpus = p.VName.Corpus
-			components := strings.SplitN(vn.Path, string(filepath.Separator), 2)
-			vn.Path = strings.TrimPrefix(components[1], p.CorpusRoot+"/")
-			if components[0] != "src" {
-				vn.Root = components[0]
+			if components := strings.SplitN(vn.Path, string(filepath.Separator), 2); len(components) == 2 {
+				vn.Path = strings.TrimPrefix(components[1], p.CorpusRoot+"/")
+				if components[0] != "src" {
+					vn.Root = components[0]
+				}
 			}
 		}
 		cu.RequiredInput = append(cu.RequiredInput, &apb.CompilationUnit_FileInput{

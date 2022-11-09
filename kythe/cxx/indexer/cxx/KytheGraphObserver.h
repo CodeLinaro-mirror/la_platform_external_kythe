@@ -137,6 +137,8 @@ struct KytheGraphObserverOptions {
   // The default corpus to use for nodes which would otherwise have an empty
   // corpus.
   std::string default_corpus = "";
+  // Associates a hash to its semantic signature.
+  HashRecorder* hash_recorder;
 };
 
 /// \brief Records details in the form of Kythe nodes and edges about elements
@@ -150,7 +152,7 @@ class KytheGraphObserver : public GraphObserver {
                               const MetadataSupports* meta_supports,
                               const llvm::IntrusiveRefCntPtr<IndexVFS>& vfs,
                               ProfilingCallback ReportProfileEventCallback,
-                              const Options& options = {})
+                              Options& options)
       : recorder_(CHECK_NOTNULL(recorder)),
         client_(CHECK_NOTNULL(client)),
         meta_supports_(CHECK_NOTNULL(meta_supports)),
@@ -163,6 +165,7 @@ class KytheGraphObserver : public GraphObserver {
     ReportProfileEvent = std::move(ReportProfileEventCallback);
     RegisterBuiltins();
     EmitMetaNodes();
+    hash_recorder_ = options.hash_recorder;
   }
 
   NodeId getNodeIdForBuiltinType(
@@ -177,7 +180,8 @@ class KytheGraphObserver : public GraphObserver {
   }
 
   void applyMetadataFile(clang::FileID ID, const clang::FileEntry* file,
-                         const std::string& search_string) override;
+                         const std::string& search_string,
+                         const clang::FileEntry* target_file) override;
   void StopDeferringNodes() { deferring_nodes_ = false; }
   void DropRedundantWraiths() { drop_redundant_wraiths_ = true; }
   void Delimit() override { recorder_->PushEntryGroup(); }
@@ -214,6 +218,10 @@ class KytheGraphObserver : public GraphObserver {
       const NodeId& node,
       const absl::optional<MarkedSource>& marked_source) override;
 
+  void recordTVarNode(
+      const NodeId& node,
+      const absl::optional<MarkedSource>& marked_source) override;
+
   void recordAbsNode(const NodeId& node) override;
 
   void recordMarkedSource(
@@ -225,6 +233,9 @@ class KytheGraphObserver : public GraphObserver {
 
   void recordParamEdge(const NodeId& param_of_id, uint32_t ordinal,
                        const NodeId& param_id) override;
+
+  void recordTParamEdge(const NodeId& param_of_id, uint32_t ordinal,
+                        const NodeId& param_id) override;
 
   void recordInterfaceNode(
       const NodeId& node,

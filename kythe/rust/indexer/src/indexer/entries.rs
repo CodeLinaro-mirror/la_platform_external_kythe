@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::error::KytheError;
+use crate::indexer::analyzers::ByteSpan;
 use crate::writer::KytheWriter;
 
 use sha2::{Digest, Sha256};
@@ -97,16 +98,19 @@ impl<'a> EntryEmitter<'a> {
         &mut self,
         anchor_vname: &VName,
         target_vname: &VName,
-        byte_start: u32,
-        byte_end: u32,
+        byte_span: ByteSpan,
     ) -> Result<(), KytheError> {
         self.emit_fact(anchor_vname, "/kythe/node/kind", b"anchor".to_vec())?;
         self.emit_fact(
             anchor_vname,
             "/kythe/loc/start",
-            byte_start.to_string().into_bytes().to_vec(),
+            byte_span.start_byte.to_string().into_bytes().to_vec(),
         )?;
-        self.emit_fact(anchor_vname, "/kythe/loc/end", byte_end.to_string().into_bytes().to_vec())?;
+        self.emit_fact(
+            anchor_vname,
+            "/kythe/loc/end",
+            byte_span.end_byte.to_string().into_bytes().to_vec(),
+        )?;
         self.emit_edge(anchor_vname, target_vname, "/kythe/edge/ref")
     }
 
@@ -132,9 +136,8 @@ impl<'a> EntryEmitter<'a> {
         let sha256sum = hex::encode(bytes);
 
         // Use source_vname signature and sha256 sum to generate diagnostic signature
-        let mut diagnostic_vname = VName::new();
-        let source_signature = source_vname.get_signature();
-        diagnostic_vname.set_signature(format!("{}_{}", source_signature, sha256sum));
+        let mut diagnostic_vname = source_vname.clone();
+        diagnostic_vname.set_signature(format!("{}_{}", source_vname.get_signature(), sha256sum));
 
         // Emit diagnostic node
         self.emit_fact(&diagnostic_vname, "/kythe/node/kind", b"diagnostic".to_vec())?;

@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/google/go-cmp/cmp"
-	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/testing/protocmp"
 
 	spb "kythe.io/kythe/proto/storage_go_proto"
 )
@@ -62,7 +62,8 @@ func (By) isOption() {}
 // Compare returns the Order between two arbitrary values of the same type.
 //
 // Only the following types are currently supported:
-//     {string, int, int32, []byte, bool}.
+//
+//	{string, int, int32, []byte, bool}.
 //
 // Options may be provided to change the semantics of the comparison.  Other
 // types may be compared if an appropriate By Option transforms the values into
@@ -121,9 +122,10 @@ func Compare(a, b interface{}, opts ...Option) (o Order) {
 // determined and returned.  AndThen can be used to chain comparisons.
 //
 // Examples:
-//   Compare(a, b, By(someField)).AndThen(a, b, By(someOtherField))
 //
-//   Entries(e1, e2).AndThen(e1.FactValue, e2.FactValue)
+//	Compare(a, b, By(someField)).AndThen(a, b, By(someOtherField))
+//
+//	Entries(e1, e2).AndThen(e1.FactValue, e2.FactValue)
 func (o Order) AndThen(a, b interface{}, opts ...Option) Order {
 	if o != EQ {
 		return o
@@ -298,18 +300,6 @@ func ProtoDiff(x, y interface{}, opts ...cmp.Option) string {
 
 func makeProtoOpts(opts []cmp.Option) []cmp.Option {
 	protoOpts := append([]cmp.Option{}, opts...)
-	protoOpts = append(protoOpts,
-		cmp.Comparer(proto.Equal),
-		ignoreProtoXXXFields,
-	)
+	protoOpts = append(protoOpts, protocmp.Transform())
 	return protoOpts
 }
-
-var ignoreProtoXXXFields = cmp.FilterPath(func(p cmp.Path) bool {
-	for _, s := range p {
-		if strings.HasPrefix(s.String(), ".XXX_") {
-			return true
-		}
-	}
-	return false
-}, cmp.Ignore())

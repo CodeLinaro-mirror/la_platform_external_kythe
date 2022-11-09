@@ -20,6 +20,23 @@ import com.beust.jcommander.Parameter;
 import com.google.devtools.kythe.analyzers.base.IndexerConfig;
 
 public class JavaIndexerConfig extends IndexerConfig {
+  @Parameter(names = "--generics_structure", description = "Structure to emit for generics.")
+  private GenericsStructure genericsStructure = GenericsStructure.ABS;
+
+  public enum GenericsStructure {
+    // Emit the legacy { n -[childof]-> abs -[param.#]-> absvar } structure
+    // See: https://kythe.io/docs/schema/#absvar
+    ABS,
+    // Emit the { n -[tparam.#]-> tvar } structure
+    // See: https://kythe.io/docs/schema/#tvar
+    TPARAM;
+  }
+
+  @Parameter(
+      names = "--emit_doc_for_non_javadoc",
+      description = "Emit documentation nodes for non-javadoc comments")
+  private boolean emitDocForNonJavadoc;
+
   @Parameter(names = "--emit_jvm_signatures", description = "Generate vnames with jvm signatures.")
   private boolean emitJvmSignatures;
 
@@ -72,6 +89,10 @@ public class JavaIndexerConfig extends IndexerConfig {
     super(programName);
   }
 
+  public final GenericsStructure getGenericsStructure() {
+    return genericsStructure;
+  }
+
   public final boolean getIgnoreVNamePaths() {
     return ignoreVNamePaths;
   }
@@ -82,6 +103,10 @@ public class JavaIndexerConfig extends IndexerConfig {
 
   public final String getOverrideJdkCorpus() {
     return overrideJdkCorpus;
+  }
+
+  public boolean getEmitDocForNonJavadoc() {
+    return emitDocForNonJavadoc;
   }
 
   public boolean getEmitJvmSignatures() {
@@ -98,6 +123,11 @@ public class JavaIndexerConfig extends IndexerConfig {
 
   public boolean getUseCompilationCorpusAsDefault() {
     return useCompilationCorpusAsDefault;
+  }
+
+  public JavaIndexerConfig setGenericsStructure(GenericsStructure genericsStructure) {
+    this.genericsStructure = genericsStructure;
+    return this;
   }
 
   public JavaIndexerConfig setIgnoreVNamePaths(boolean ignoreVNamePaths) {
@@ -117,6 +147,11 @@ public class JavaIndexerConfig extends IndexerConfig {
 
   public JavaIndexerConfig setEmitAnchorScopes(boolean emitAnchorScopes) {
     this.emitAnchorScopes = emitAnchorScopes;
+    return this;
+  }
+
+  public JavaIndexerConfig setEmitDocForNonJavadoc(boolean emitDocForNonJavadoc) {
+    this.emitDocForNonJavadoc = emitDocForNonJavadoc;
     return this;
   }
 

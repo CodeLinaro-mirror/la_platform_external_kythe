@@ -15,6 +15,7 @@ go_library(
     ],
     deps = [
         "//kythe/go/extractors/govname",
+        "//kythe/go/util/kytheuri",
         "//kythe/go/util/metadata",
         "//kythe/go/util/ptypes",
         "//kythe/go/util/schema/edges",
@@ -49,6 +50,37 @@ bzl_library(
     name = "go_indexer_test_bzl",
     srcs = ["testdata/go_indexer_test.bzl"],
     visibility = ["//visibility:private"],
+)
+
+go_indexer_test(
+    name = "genericstruct_test",
+    srcs = ["testdata/generics/genericstruct.go"],
+    has_marked_source = True,
+)
+
+go_indexer_test(
+    name = "genericmethod_test",
+    srcs = ["testdata/generics/genericmethod.go"],
+    has_marked_source = True,
+)
+
+go_indexer_test(
+    name = "genericinterface_test",
+    srcs = ["testdata/generics/genericinterface.go"],
+    has_marked_source = True,
+)
+
+go_indexer_test(
+    name = "genericfunc_test",
+    srcs = ["testdata/generics/genericfunc.go"],
+    has_marked_source = True,
+)
+
+go_indexer_test(
+    name = "genericdep_test",
+    srcs = ["testdata/generics/genericdep.go"],
+    has_marked_source = True,
+    deps = [":genericinterface_test"],
 )
 
 go_indexer_test(
@@ -200,6 +232,12 @@ go_indexer_test(
 )
 
 go_indexer_test(
+    name = "anonref_test",
+    srcs = ["testdata/basic/anonref.go"],
+    deps = [":anonymous_test"],
+)
+
+go_indexer_test(
     name = "structinit_test",
     srcs = ["testdata/structinit.go"],
 )
@@ -237,6 +275,35 @@ go_indexer_test(
 empty_corpus_test(
     name = "empty_corpus_test",
     entries = ":tappcorpus_test_entries.entries.gz",
+)
+
+go_indexer_test(
+    name = "stdlibimport_test",
+    srcs = ["testdata/basic/stdlibimport.go"],
+    extra_extractor_args = [
+        "--use_default_corpus_for_stdlib",
+        "--corpus=kythe",
+    ],
+    use_compilation_corpus_as_default = True,
+)
+
+# Test that extracting and indexing a go package that imports standard libraries
+# does not contain entries in the "golang.org" corpus when
+# --use_default_corpus_for_stdlib is enabled.
+empty_corpus_test(
+    name = "stdlibimport_corpus_test",
+    allowed_corpora = ["kythe"],
+    entries = ":stdlibimport_test_entries.entries.gz",
+)
+
+go_indexer_test(
+    name = "stdliboverride_test",
+    srcs = ["testdata/basic/stdliboverride.go"],
+    extra_extractor_args = [
+        "--corpus=kythe",
+    ],
+    override_stdlib_corpus = "STDLIB_OVERRIDE",
+    use_compilation_corpus_as_default = True,
 )
 
 # load(":testdata/go_indexer_test.bzl", "go_integration_test")

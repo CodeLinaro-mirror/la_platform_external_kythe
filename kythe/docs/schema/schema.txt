@@ -176,23 +176,23 @@ bounded/upper or bounded/lower
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Brief description::
-  <<absvar>> A is *bounded/upper* by B when A is constrained to be a subtype
-  of B. <<absvar>> A is *bounded/lower* by B when A is constrained to be a
-  supertype of B.
+  <<absvar>>/<<tvar>> A is *bounded/upper* by B when A is constrained to be a
+  subtype of B. <<absvar>>/<<tvar>> A is *bounded/lower* by B when A is
+  constrained to be a supertype of B.
 See also::
-  <<absvar>>
+  <<absvar>>, <<tvar>>
 Commonly arises from::
   Type parameters
 Notes::
-  * Kythe leaves the interpretation of unbounded <<absvar>> nodes to each
-    language. For example, an <<absvar>> with no *bounded* edges in Java may be
-    assigned any subtype of Object, but no primitive type.
-  * It is possible for an <<absvar>> to have multiple bounds. For example, this
-    occurs in Java when a type parameter must implement several interfaces.
-    In cases where the order of the bounds matters (e.g., in Java, where the
-    order affects type erasure), the bound edge kind may be qualified by an ordinal,
-    so that A is *bounded/upper.N* by B if B is the Nth upper bound of A.
-    Code interpreting *bounded* edges should be able to handle both
+  * Kythe leaves the interpretation of unbounded <<absvar>>/<<tvar>> nodes to
+    each language. For example, an <<absvar>>/<<tvar>> with no *bounded* edges
+    in Java may be assigned any subtype of Object, but no primitive type.
+  * It is possible for an <<absvar>>/<<tvar>> to have multiple bounds. For
+    example, this occurs in Java when a type parameter must implement several
+    interfaces.  In cases where the order of the bounds matters (e.g., in Java,
+    where the order affects type erasure), the bound edge kind may be qualified
+    by an ordinal, so that A is *bounded/upper.N* by B if B is the Nth upper
+    bound of A.  Code interpreting *bounded* edges should be able to handle both
     ordered and unordered edges.
 
 [kythe,Java,"Generic type parameters can be bound."]
@@ -304,6 +304,37 @@ template <typename T> struct C {
 template struct C<int>;
 --------------------------------------------------------------------------------
 
+[[completedby]]
+completedby
+~~~~~~~~~~~
+
+Brief description::
+  Declaration A *completedby* definition B if B fully specifies A.
+  There may exist other definitions that may also fully specify A.
+Commonly arises from::
+  definitions of forward declarations
+Points from::
+  semantic nodes with `complete` facts set to `incomplete` or `complete`
+Points toward::
+  semantic nodes with `complete` facts set to `complete`
+See also::
+  <<record>>, <<sum>>
+
+[kythe,C++,"Declarations are completed by definitions."]
+--------------------------------------------------------------------------------
+#include "test.h"
+//- Decl1 completedby Defn
+//- Decl2 completedby Defn
+//- @C defines/binding Defn
+class C { };
+
+#example test.h
+//- @C defines/binding Decl1
+class C;
+//- @C defines/binding Decl2
+class C;
+--------------------------------------------------------------------------------
+
 [[completes]]
 completes
 ~~~~~~~~~
@@ -319,6 +350,9 @@ Points toward::
   semantic nodes with `complete` facts set to `incomplete` or `complete`
 See also::
   <<record>>, <<sum>>, <<completesuniquely,[completes/uniquely]>>
+
+WARNING: *completes* edges are deprecated.  Their structure should be replaced
+with the one documented for <<completedby>>.
 
 [kythe,C++,"Definitions complete forward declarations in headers."]
 --------------------------------------------------------------------------------
@@ -350,6 +384,9 @@ Points toward::
   semantic nodes with `complete` facts set to `incomplete` or `complete`
 See also::
   <<completes>>, <<record>>, <<sum>>
+
+WARNING: *completes/uniquely* edges are deprecated.  Their structure should be
+replaced with the one documented for <<completedby>>.
 
 [kythe,C++,"Definitions uniquely complete same-file forward declarations."]
 --------------------------------------------------------------------------------
@@ -594,7 +631,8 @@ extends
 ~~~~~~~
 
 Brief description::
-  A *extends* B if A is a direct nominal subtype of B.
+  A *extends* B if A explicitly derives from B. It neither implies nor excludes
+  any type relationship between A and B.
 Commonly arises from::
   inheritance
 Points from::
@@ -621,15 +659,35 @@ public class E {
 }
 --------------------------------------------------------------------------------
 
+[kythe,Java,"Classes and interfaces extend interfaces."]
+--------------------------------------------------------------------------------
+package pkg;
+//- @I defines/binding IntfI
+interface I { }
+
+//- @J defines/binding IntfJ
+//- IntfJ extends IntfI
+interface J extends I { }
+
+//- @C defines/binding ClassC
+//- ClassC extends IntfJ
+//- !{ClassC extends IntfI}
+class C implements J { }
+--------------------------------------------------------------------------------
+
 [kythe,C++,"Classes extend classes."]
 --------------------------------------------------------------------------------
 //- @A defines/binding ClassA
 class A { };
+
 //- @B defines/binding ClassB
 //- ClassB extends/public ClassA
 class B : public A { };
---------------------------------------------------------------------------------
 
+//- @C defines/binding ClassC
+//- ClassC extends/private ClassA
+class C : private A { };
+--------------------------------------------------------------------------------
 
 [[generates]]
 generates
@@ -1534,6 +1592,45 @@ Points toward::
 Ordinals are used::
   never
 
+
+[[tparam]]
+tparam
+~~~~~~
+
+Brief description::
+  A *tparam.N* B if B is the Nth type/template parameter of A.
+Commonly arises from::
+  templates, generic types
+Points from::
+  semantic nodes
+Points toward::
+  <<tvar>>
+Ordinals are used::
+  always
+
+[kythe,Go,"Generics have ordered tparam edges."]
+--------------------------------------------------------------------------------
+package tparam
+
+//- Func.node/kind function
+//- TVar.node/kind tvar
+//- UVar.node/kind tvar
+
+//- Func tparam.0 TVar
+//- Func tparam.1 UVar
+
+//- @Map defines/binding Func
+//- @#0T defines/binding TVar
+//- @#0U defines/binding UVar
+func Map[T any, U any](l []T, f func(T) U) []U {
+	res := make([]U, len(l))
+	for i, t := range l {
+		res[i] = f(t)
+	}
+	return res
+}
+--------------------------------------------------------------------------------
+
 [[typed]]
 typed
 ~~~~~
@@ -1695,6 +1792,9 @@ Brief description::
 See also::
   <<absvar>>, <<specializes>>, <<tapp>>
 
+WARNING: *abs* nodes are deprecated.  Their structure should be replaced with
+the one documented for <<tparam>>.
+
 It is not necessarily the case that the child of the abs node be a type;
 for example, in $$C++$$, it may be a variable or a function.
 
@@ -1735,7 +1835,10 @@ absvar
 Brief description::
   An *absvar* is bound by an <<abs>> and valid in its children.
 See also::
-  <<abs>>, <<specializes>>
+  <<abs>>, <<specializes>>, <<tvar>>
+
+WARNING: *absvar* nodes are deprecated.  They should be replaced with <<tvar>>
+nodes.
 
 [kythe,C++,"Type variables are absvars."]
 --------------------------------------------------------------------------------
@@ -1984,6 +2087,19 @@ int x;
 //- XAnchor.loc/end 5
 //- SourceFile=vname("",Corpus,Root,Path,"").node/kind file
 --------------------------------------------------------------------------------
+
+[[flag]]
+flag
+~~~~
+
+Brief description::
+  A *flag* is a named parameter usually passed to a program from the command
+  line.
+Notes::
+  Indexers can support various common flag libraries. Flag nodes from different
+  libraries are given different kind labels. For example, the Abseil/Google
+  flag libraries will produce *flag/google* nodes. The name and default value
+  of a flag can be derived from its <<code>> fact.
 
 [[interface]]
 interface
@@ -2416,6 +2532,33 @@ int g(double x) { f(1, x); }
 //- Sigma param.1 DoubleType
 --------------------------------------------------------------------------------
 
+
+[[tvar]]
+tvar
+~~~~
+
+Brief description::
+  A *tvar* is a type/template parameter and bound to a semantic node with a
+  <<tparam>> edge.
+See also::
+  <<tapp>>, <<tparam>>, <<specializes>>
+
+[kythe,Go,"Type parameters are tvars."]
+--------------------------------------------------------------------------------
+package tvar
+
+//- Container.node/kind record
+//- TVar.node/kind tvar
+
+//- Container tparam.0 TVar
+
+//- @Container defines/binding Container
+//- @T defines/binding TVar
+type Container[T any] struct {
+  //- @T ref TVar
+  Element T
+}
+--------------------------------------------------------------------------------
 
 [[variable]]
 variable

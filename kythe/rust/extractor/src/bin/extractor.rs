@@ -20,12 +20,14 @@ mod save_analysis;
 use analysis_rust_proto::*;
 use anyhow::{Context, Result};
 use extra_actions_base_rust_proto::*;
+use glob::glob;
 use kythe_rust_extractor::vname_util::VNameRule;
 use protobuf::Message;
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::{env, fs};
 use tempdir::TempDir;
 use zip::{write::FileOptions, ZipWriter};
 
@@ -38,12 +40,31 @@ fn main() -> Result<()> {
     // Retrieve the SpawnInfo from the extra action file
     let spawn_info = get_spawn_info(&config.extra_action_path)?;
 
-    // Set environment variables from spawn info
-    let environment_variables = spawn_info.get_variable().to_vec();
+    // Grab the environment variables from spawn info and set them in our current
+    // environment
+    let environment_variables: Vec<_> = spawn_info.get_variable().to_vec();
     let pwd = std::env::current_dir().context("Couldn't determine pwd")?;
+    let mut out_dir_var: Option<String> = None;
     for variable in environment_variables {
-        let value = variable.get_value().replace("${pwd}", pwd.to_str().unwrap());
-        std::env::set_var(variable.get_name(), value);
+        let original_value = variable.get_value();
+        let value = original_value.replace("${pwd}", pwd.to_str().unwrap());
+        let name = variable.get_name();
+        std::env::set_var(name, value);
+        if name == "OUT_DIR" {
+            // We want the original value so that we can easily get file paths
+            // relative to OUT_DIR later
+            out_dir_var = Some(original_value.to_string());
+        }
+    }
+
+    // Get paths for files present in $OUT_DIR
+    let mut out_dir_inputs: Vec<String> = Vec::new();
+    if let Some(out_dir) = out_dir_var {
+        let absolute_out_dir = out_dir.replace("${pwd}", pwd.to_str().unwrap());
+        let glob_pattern = format!("{}/**/*", absolute_out_dir);
+        for path in glob(&glob_pattern).unwrap().flatten() {
+            out_dir_inputs.push(path.display().to_string());
+        }
     }
 
     // Create temporary directory and run the analysis
@@ -52,7 +73,7 @@ fn main() -> Result<()> {
     let build_target_arguments: Vec<String> = spawn_info.get_argument().to_vec();
     save_analysis::generate_save_analysis(
         build_target_arguments.clone(),
-        PathBuf::new().join(tmp_dir.path()),
+        PathBuf::from(tmp_dir.path()),
     )?;
 
     // Create the output kzip
@@ -73,28 +94,62 @@ fn main() -> Result<()> {
         .filter(|file| file.ends_with(".rs"))
         .map(String::from) // Map the &String to a new String
         .collect();
-    let mut required_input: Vec<CompilationUnit_FileInput> = Vec::new();
+    let mut required_inputs: Vec<CompilationUnit_FileInput> = Vec::new();
     for file_path in &rust_source_files {
         // Generate the file vname based on the vname rules
         let file_vname: VName = create_vname(&mut vname_rules, file_path, &default_corpus);
-        kzip_add_required_input(file_path, file_vname, &mut kzip, &mut required_input)?;
+        kzip_add_required_input(file_path, file_vname, &mut kzip, &mut required_inputs)?;
+    }
+
+    // Add files that were present in $OUT_DIR during compilation as required inputs
+    let mut out_dir_rust_source_files = Vec::new();
+    for path in out_dir_inputs {
+        // We strip the current working directory so we can generate the proper VName,
+        // as the resulting path will usually start with "bazel-out/".
+        let relative_path = path.replace(&format!("{}/", pwd.to_str().unwrap()), "");
+        let file_vname: VName = create_vname(&mut vname_rules, &relative_path, &default_corpus);
+        // We path the absolute path when adding the file as a required input because
+        // that is the path will show up in the save_analysis. We want it set as the
+        // FileInfo path so it can be properly matched to its VName during indexing.
+        kzip_add_required_input(&path, file_vname, &mut kzip, &mut required_inputs)?;
+        // If this is a Rust file, add it to the vec
+        if path.ends_with(".rs") {
+            out_dir_rust_source_files.push(path);
+        }
     }
 
     // Grab the build target's output path
-    let build_output_path: &String = spawn_info
+    let build_output_path = spawn_info
         .get_output_file()
         .get(0)
         .ok_or_else(|| anyhow!("Failed to get output file from spawn info"))?;
 
+    // Infer the crate name from the compiler args, falling back to the output file
+    // name if necessary
+    let crate_name = {
+        let crate_name_matches: Vec<_> =
+            build_target_arguments.iter().filter(|arg| arg.starts_with("--crate-name=")).collect();
+        if !crate_name_matches.is_empty() {
+            crate_name_matches.get(0).unwrap().replace("--crate-name=", "")
+        } else {
+            PathBuf::from(build_output_path)
+                .file_name()
+                .unwrap()
+                .to_str()
+                .ok_or_else(|| anyhow!("Failed to convert build output path file name to string"))?
+                .to_string()
+        }
+    };
+
     // Add save analysis to kzip
-    let save_analysis_path: String = analysis_path_string(build_output_path, tmp_dir.path())?;
+    let save_analysis_path: String = analysis_path_string(&crate_name, tmp_dir.path())?;
     let save_analysis_vname: VName =
         create_vname(&mut vname_rules, &save_analysis_path, &default_corpus);
     kzip_add_required_input(
         &save_analysis_path,
         save_analysis_vname,
         &mut kzip,
-        &mut required_input,
+        &mut required_inputs,
     )?;
 
     // Create the IndexedCompilation and add it to the kzip
@@ -103,12 +158,18 @@ fn main() -> Result<()> {
     if !default_corpus.is_empty() {
         unit_vname.set_corpus(default_corpus);
     }
+    let mut all_source_files = Vec::new();
+    all_source_files.extend(rust_source_files);
+    all_source_files.extend(out_dir_rust_source_files);
     let indexed_compilation = create_indexed_compilation(
-        rust_source_files,
+        all_source_files,
         build_target_arguments,
         build_output_path,
-        required_input,
+        required_inputs,
         unit_vname,
+        env::current_dir()?
+            .to_str()
+            .ok_or_else(|| anyhow!("working directory is invalid UTF-8"))?,
     );
     let mut indexed_compilation_bytes: Vec<u8> = Vec::new();
     indexed_compilation
@@ -156,12 +217,14 @@ fn get_spawn_info(file_path: impl AsRef<Path>) -> Result<SpawnInfo> {
 /// * `build_output_path` - The output path of the build target
 /// * `required_input` - The generated data for the CompilationUnit
 ///   `required_input` field
+/// * `working_directory` - The working_directory field for the CompilationUnit
 fn create_indexed_compilation(
     source_files: Vec<String>,
     arguments: Vec<String>,
     build_output_path: &str,
     required_input: Vec<CompilationUnit_FileInput>,
     mut unit_vname: VName,
+    working_directory: &str,
 ) -> IndexedCompilation {
     let mut compilation_unit = CompilationUnit::new();
 
@@ -171,6 +234,7 @@ fn create_indexed_compilation(
     compilation_unit.set_argument(protobuf::RepeatedField::from_vec(arguments));
     compilation_unit.set_required_input(protobuf::RepeatedField::from_vec(required_input));
     compilation_unit.set_output_key(build_output_path.to_string());
+    compilation_unit.set_working_directory(working_directory.to_string());
 
     let mut indexed_compilation = IndexedCompilation::new();
     indexed_compilation.set_unit(compilation_unit);
@@ -239,33 +303,28 @@ fn kzip_add_file(
     Ok(())
 }
 
-/// Generate the string path of the save_analysis file using the build target's
-/// output path and the temporary base directory
-fn analysis_path_string(build_output_path: &str, temp_dir_path: &Path) -> Result<String> {
-    // Take the build output path and change the extension to .json
-    let analysis_file_name = Path::new(build_output_path).with_extension("json");
-    // Extract the file name from the path and convert to a string
-    let analysis_file_str = analysis_file_name
-        .file_name()
-        .unwrap()
-        .to_str()
-        .ok_or_else(|| anyhow!("Failed to convert path to string"))?;
+/// Find the path of the save_analysis file using the build target's
+/// crate name and the temporary base directory
+fn analysis_path_string(crate_name: &str, temp_dir_path: &Path) -> Result<String> {
+    let entries = fs::read_dir(temp_dir_path.join("save-analysis")).with_context(|| {
+        format!("Failed to read the save_analysis temporary directory: {:?}", temp_dir_path)
+    })?;
 
-    // Join the temp_dir_path with "save-analysis/${analysis_file_str}" to get the
-    // full path of the save_analysis JSON file
-    let mut path = temp_dir_path.join("save-analysis").join(analysis_file_str);
-
-    // The path should almost always exist. However, if the target name had
-    // hyphens, then the final save_analysis file has underscores. We can't
-    // always replace the hyphens with underscores because the save_analysis
-    // files for libraries have hyphens in them.
-    if !path.exists() {
-        path = temp_dir_path.join("save-analysis").join(analysis_file_str.replace("-", "_"));
+    for entry in entries {
+        let entry = entry.with_context(|| "Failed to get information about directory entry")?;
+        let metadata = entry.metadata().with_context(|| "Failed to get entry metadata")?;
+        let path = entry.path();
+        let path_string = path
+            .to_str()
+            .ok_or_else(|| anyhow!("save_analysis file path is not valid UTF-8"))
+            .map(|path_str| path_str.to_string())?;
+        if metadata.is_file() && path_string.contains(crate_name) && path_string.ends_with(".json")
+        {
+            return Ok(path_string);
+        }
     }
 
-    path.to_str()
-        .ok_or_else(|| anyhow!("save_analysis file path is not valid UTF-8"))
-        .map(|path_str| path_str.to_string())
+    Err(anyhow!("Failed to find save-analysis file in {:?}", temp_dir_path))
 }
 
 fn create_vname(rules: &mut [VNameRule], path: &str, default_corpus: &str) -> VName {
