@@ -2652,10 +2652,10 @@ fact_value: "//- A->node/kind file\n"
 TEST(VerifierUnitTest, DontConvertMarkedSource) {
   Verifier v;
   MarkedSource source;
-  google::protobuf::string source_string;
+  std::string source_string;
   ASSERT_TRUE(source.SerializeToString(&source_string));
   google::protobuf::TextFormat::FieldValuePrinter printer;
-  google::protobuf::string enc_source = printer.PrintBytes(source_string);
+  std::string enc_source = printer.PrintBytes(source_string);
   ASSERT_TRUE(v.LoadInlineProtoFile(R"(
   entries {
     source { signature:"test" }
@@ -2673,10 +2673,10 @@ TEST(VerifierUnitTest, ConvertMarkedSource) {
   Verifier v;
   v.ConvertMarkedSource();
   MarkedSource source;
-  google::protobuf::string source_string;
+  std::string source_string;
   ASSERT_TRUE(source.SerializeToString(&source_string));
   google::protobuf::TextFormat::FieldValuePrinter printer;
-  google::protobuf::string enc_source = printer.PrintBytes(source_string);
+  std::string enc_source = printer.PrintBytes(source_string);
   ASSERT_TRUE(v.LoadInlineProtoFile(R"(
   entries {
     source { signature:"test" }
@@ -2708,10 +2708,10 @@ TEST(VerifierUnitTest, ConvertMarkedSourceKindEnums) {
     v.ConvertMarkedSource();
     MarkedSource source;
     source.set_kind(kind_enum);
-    google::protobuf::string source_string;
+    std::string source_string;
     ASSERT_TRUE(source.SerializeToString(&source_string));
     google::protobuf::TextFormat::FieldValuePrinter printer;
-    google::protobuf::string enc_source = printer.PrintBytes(source_string);
+    std::string enc_source = printer.PrintBytes(source_string);
     ASSERT_TRUE(v.LoadInlineProtoFile(R"(
     entries {
       source { signature:"test" }
@@ -2732,10 +2732,10 @@ TEST(VerifierUnitTest, ConvertMarkedSourceLinks) {
   v.ConvertMarkedSource();
   MarkedSource source;
   source.add_link()->add_definition("kythe://corpus#sig");
-  google::protobuf::string source_string;
+  std::string source_string;
   ASSERT_TRUE(source.SerializeToString(&source_string));
   google::protobuf::TextFormat::FieldValuePrinter printer;
-  google::protobuf::string enc_source = printer.PrintBytes(source_string);
+  std::string enc_source = printer.PrintBytes(source_string);
   ASSERT_TRUE(v.LoadInlineProtoFile(R"(
   entries {
     source { signature:"test" }
@@ -2754,10 +2754,10 @@ TEST(VerifierUnitTest, ConvertMarkedSourceLinksBadUri) {
   v.ConvertMarkedSource();
   MarkedSource source;
   source.add_link()->add_definition("kythe:/&bad");
-  google::protobuf::string source_string;
+  std::string source_string;
   ASSERT_TRUE(source.SerializeToString(&source_string));
   google::protobuf::TextFormat::FieldValuePrinter printer;
-  google::protobuf::string enc_source = printer.PrintBytes(source_string);
+  std::string enc_source = printer.PrintBytes(source_string);
   ASSERT_FALSE(v.LoadInlineProtoFile(R"(
   entries {
     source { signature:"test" }
@@ -2772,10 +2772,10 @@ TEST(VerifierUnitTest, ConvertMarkedSourceLinksMissingUri) {
   v.ConvertMarkedSource();
   MarkedSource source;
   source.add_link();
-  google::protobuf::string source_string;
+  std::string source_string;
   ASSERT_TRUE(source.SerializeToString(&source_string));
   google::protobuf::TextFormat::FieldValuePrinter printer;
-  google::protobuf::string enc_source = printer.PrintBytes(source_string);
+  std::string enc_source = printer.PrintBytes(source_string);
   ASSERT_FALSE(v.LoadInlineProtoFile(R"(
   entries {
     source { signature:"test" }
@@ -2792,10 +2792,10 @@ TEST(VerifierUnitTest, ConvertMarkedSourceLinksMultipleUri) {
   auto* link = source.add_link();
   link->add_definition("kythe://corpus#sig");
   link->add_definition("kythe://corpus#sig2");
-  google::protobuf::string source_string;
+  std::string source_string;
   ASSERT_TRUE(source.SerializeToString(&source_string));
   google::protobuf::TextFormat::FieldValuePrinter printer;
-  google::protobuf::string enc_source = printer.PrintBytes(source_string);
+  std::string enc_source = printer.PrintBytes(source_string);
   ASSERT_FALSE(v.LoadInlineProtoFile(R"(
   entries {
     source { signature:"test" }
@@ -2813,10 +2813,10 @@ TEST(VerifierUnitTest, ConvertMarkedSourceChildren) {
   child->set_kind(MarkedSource::IDENTIFIER);
   child = source.add_child();
   child->set_kind(MarkedSource::CONTEXT);
-  google::protobuf::string source_string;
+  std::string source_string;
   ASSERT_TRUE(source.SerializeToString(&source_string));
   google::protobuf::TextFormat::FieldValuePrinter printer;
-  google::protobuf::string enc_source = printer.PrintBytes(source_string);
+  std::string enc_source = printer.PrintBytes(source_string);
   ASSERT_TRUE(v.LoadInlineProtoFile(R"(
   entries {
     source { signature:"test" }
@@ -2841,10 +2841,10 @@ TEST(VerifierUnitTest, ConvertMarkedSourceBadChildren) {
   auto* link = child->add_link();
   link->add_definition("kythe://corpus#sig");
   link->add_definition("kythe://corpus#sig2");
-  google::protobuf::string source_string;
+  std::string source_string;
   ASSERT_TRUE(parent.SerializeToString(&source_string));
   google::protobuf::TextFormat::FieldValuePrinter printer;
-  google::protobuf::string enc_source = printer.PrintBytes(source_string);
+  std::string enc_source = printer.PrintBytes(source_string);
   ASSERT_FALSE(v.LoadInlineProtoFile(R"(
   entries {
     source { signature:"test" }
@@ -2864,10 +2864,10 @@ TEST(VerifierUnitTest, ConvertMarkedSourceFields) {
   source.set_lookup_index(42);
   source.set_default_children_count(43);
   source.set_add_final_list_token(true);
-  google::protobuf::string source_string;
+  std::string source_string;
   ASSERT_TRUE(source.SerializeToString(&source_string));
   google::protobuf::TextFormat::FieldValuePrinter printer;
-  google::protobuf::string enc_source = printer.PrintBytes(source_string);
+  std::string enc_source = printer.PrintBytes(source_string);
   ASSERT_TRUE(v.LoadInlineProtoFile(R"(
   entries {
     source { signature:"test" }
@@ -2890,10 +2890,10 @@ TEST(VerifierUnitTest, DontConvertMarkedSourceDuplicateFactsWellFormed) {
   Verifier v;
   MarkedSource source;
   v.IgnoreDuplicateFacts();
-  google::protobuf::string source_string;
+  std::string source_string;
   ASSERT_TRUE(source.SerializeToString(&source_string));
   google::protobuf::TextFormat::FieldValuePrinter printer;
-  google::protobuf::string enc_source = printer.PrintBytes(source_string);
+  std::string enc_source = printer.PrintBytes(source_string);
   ASSERT_TRUE(v.LoadInlineProtoFile(R"(
   entries {
     source { signature:"test" }
@@ -2914,10 +2914,10 @@ TEST(VerifierUnitTest, ConvertMarkedSourceDuplicateFactsWellFormed) {
   Verifier v;
   v.ConvertMarkedSource();
   MarkedSource source;
-  google::protobuf::string source_string;
+  std::string source_string;
   ASSERT_TRUE(source.SerializeToString(&source_string));
   google::protobuf::TextFormat::FieldValuePrinter printer;
-  google::protobuf::string enc_source = printer.PrintBytes(source_string);
+  std::string enc_source = printer.PrintBytes(source_string);
   ASSERT_TRUE(v.LoadInlineProtoFile(R"(
   entries {
     source { signature:"test" }

@@ -277,9 +277,9 @@ TEST(KytheIndexerUnitTest, GraphRecorderEdgeOrdinal) {
   EXPECT_EQ(vname_target.DebugString(), entry.target().DebugString());
 }
 
-static void WriteStringToStackAndBuffer(const google::protobuf::string& value,
+static void WriteStringToStackAndBuffer(const std::string& value,
                                         kythe::BufferStack* stack,
-                                        google::protobuf::string* buffer) {
+                                        std::string* buffer) {
   unsigned char* bytes = stack->WriteToTop(value.size());
   memcpy(bytes, value.data(), value.size());
   if (buffer) {
@@ -289,7 +289,7 @@ static void WriteStringToStackAndBuffer(const google::protobuf::string& value,
 
 TEST(KytheIndexerUnitTest, BufferStackWrite) {
   kythe::BufferStack stack;
-  google::protobuf::string expected, actual;
+  std::string expected, actual;
   {
     google::protobuf::io::StringOutputStream stream(&actual);
     stack.Push(0);
@@ -305,7 +305,7 @@ TEST(KytheIndexerUnitTest, BufferStackWrite) {
 
 TEST(KytheIndexerUnitTest, BufferStackMergeDown) {
   kythe::BufferStack stack;
-  google::protobuf::string actual;
+  std::string actual;
   {
     google::protobuf::io::StringOutputStream stream(&actual);
     stack.Push(0);
@@ -344,7 +344,7 @@ TEST(KytheIndexerUnitTest, BufferStackMergeDown) {
 
 TEST(KytheIndexerUnitTest, BufferStackMergeFailures) {
   kythe::BufferStack stack;
-  google::protobuf::string actual;
+  std::string actual;
   {
     google::protobuf::io::StringOutputStream stream(&actual);
     ASSERT_FALSE(stack.MergeDownIfTooSmall(0, 2048));  // too few on the stack

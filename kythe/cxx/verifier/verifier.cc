@@ -1288,7 +1288,7 @@ AstNode* Verifier::NewUniqueVName(const yy::location& loc) {
 }
 
 AstNode* Verifier::ConvertCodeFact(const yy::location& loc,
-                                   const google::protobuf::string& code_data) {
+                                   const std::string& code_data) {
   proto::common::MarkedSource marked_source;
   if (!marked_source.ParseFromString(code_data)) {
     std::cerr << loc << ": can't parse code protobuf" << std::endl;
