@@ -22,43 +22,42 @@
 //
 // Reading an Archive:
 //
-//   r, err := kzip.NewReader(file, size)
-//   ...
+//	r, err := kzip.NewReader(file, size)
+//	...
 //
-//   // Look up a compilation record by its digest.
-//   unit, err := r.Lookup(unitDigest)
-//   ...
+//	// Look up a compilation record by its digest.
+//	unit, err := r.Lookup(unitDigest)
+//	...
 //
-//   // Scan all the compilation records stored.
-//   err := r.Scan(func(unit *kzip.Unit) error {
-//      if hasInterestingProperty(unit) {
-//         doStuffWith(unit)
-//      }
-//      return nil
-//   })
+//	// Scan all the compilation records stored.
+//	err := r.Scan(func(unit *kzip.Unit) error {
+//	   if hasInterestingProperty(unit) {
+//	      doStuffWith(unit)
+//	   }
+//	   return nil
+//	})
 //
-//   // Open a reader for a stored file.
-//   rc, err := r.Open(fileDigest)
-//   ...
-//   defer rc.Close()
+//	// Open a reader for a stored file.
+//	rc, err := r.Open(fileDigest)
+//	...
+//	defer rc.Close()
 //
-//   // Read the complete contents of a stored file.
-//   bits, err := r.ReadAll(fileDigest)
-//   ...
+//	// Read the complete contents of a stored file.
+//	bits, err := r.ReadAll(fileDigest)
+//	...
 //
 // Writing an Archive:
 //
-//   w, err := kzip.NewWriter(file)
-//   ...
+//	w, err := kzip.NewWriter(file)
+//	...
 //
-//   // Add a compilation record and (optional) index data.
-//   udigest, err := w.AddUnit(unit, nil)
-//   ...
+//	// Add a compilation record and (optional) index data.
+//	udigest, err := w.AddUnit(unit, nil)
+//	...
 //
-//   // Add file contents.
-//   fdigest, err := w.AddFile(file)
-//   ...
-//
+//	// Add file contents.
+//	fdigest, err := w.AddFile(file)
+//	...
 package kzip // import "kythe.io/kythe/go/platform/kzip"
 
 import (
@@ -191,7 +190,7 @@ func NewReader(r io.ReaderAt, size int64) (*Reader, error) {
 	if len(archive.File) == 0 {
 		return nil, errors.New("archive is empty")
 	} else if fi := archive.File[0].FileInfo(); !fi.IsDir() {
-		return nil, errors.New("archive root is not a directory")
+		return nil, fmt.Errorf("archive root directory missing: expected a directory but got %v - see https://kythe.io/docs/kythe-kzip.html#_directory_and_file_layout", archive.File[0].Name)
 	}
 	root := archive.File[0].Name
 	pref, err := unitPrefix(root, archive.File)

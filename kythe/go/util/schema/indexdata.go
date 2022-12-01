@@ -23,31 +23,33 @@ import scpb "kythe.io/kythe/proto/schema_go_proto"
 
 var (
 	nodeKinds = map[string]scpb.NodeKind{
-		"abs":        1,
-		"absvar":     2,
-		"anchor":     3,
-		"constant":   4,
-		"diagnostic": 5,
-		"doc":        6,
-		"file":       7,
-		"function":   9,
-		"interface":  8,
-		"lookup":     10,
-		"macro":      11,
-		"meta":       12,
-		"name":       13,
-		"package":    14,
-		"process":    15,
-		"record":     16,
-		"sum":        17,
-		"symbol":     18,
-		"talias":     19,
-		"tapp":       20,
-		"tbuiltin":   21,
-		"tnominal":   22,
-		"tsigma":     23,
-		"variable":   24,
-		"vcs":        25,
+		"abs":          1,
+		"absvar":       2,
+		"anchor":       3,
+		"constant":     4,
+		"diagnostic":   5,
+		"doc":          6,
+		"file":         7,
+		"function":     9,
+		"google/gflag": 27,
+		"interface":    8,
+		"lookup":       10,
+		"macro":        11,
+		"meta":         12,
+		"name":         13,
+		"package":      14,
+		"process":      15,
+		"record":       16,
+		"sum":          17,
+		"symbol":       18,
+		"talias":       19,
+		"tapp":         20,
+		"tbuiltin":     21,
+		"tnominal":     22,
+		"tsigma":       23,
+		"tvar":         26,
+		"variable":     24,
+		"vcs":          25,
 	}
 
 	subkinds = map[string]scpb.Subkind{
@@ -101,6 +103,7 @@ var (
 		"/kythe/edge/bounded/upper":            5,
 		"/kythe/edge/childof":                  6,
 		"/kythe/edge/childof/context":          7,
+		"/kythe/edge/completedby":              49,
 		"/kythe/edge/completes":                8,
 		"/kythe/edge/completes/uniquely":       9,
 		"/kythe/edge/defines":                  10,
@@ -139,6 +142,7 @@ var (
 		"/kythe/edge/specializes":              39,
 		"/kythe/edge/specializes/speculative":  40,
 		"/kythe/edge/tagged":                   41,
+		"/kythe/edge/tparam":                   48,
 		"/kythe/edge/typed":                    42,
 		"/kythe/edge/undefines":                43,
 	}
@@ -169,6 +173,8 @@ var (
 		23: "tsigma",
 		24: "variable",
 		25: "vcs",
+		26: "tvar",
+		27: "google/gflag",
 	}
 
 	subkindsRev = map[scpb.Subkind]string{
@@ -262,6 +268,8 @@ var (
 		45: "/kythe/edge/property/writes",
 		46: "/kythe/edge/ref/id",
 		47: "/kythe/edge/ref/writes",
+		48: "/kythe/edge/tparam",
+		49: "/kythe/edge/completedby",
 	}
 )
 

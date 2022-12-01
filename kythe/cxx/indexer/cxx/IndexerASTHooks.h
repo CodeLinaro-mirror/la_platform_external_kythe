@@ -26,6 +26,7 @@
 
 #include "GraphObserver.h"
 #include "IndexerLibrarySupport.h"
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
@@ -85,6 +86,12 @@ enum EmitDataflowEdges : bool {
   Yes = true   ///< Emit dataflow edges.
 };
 
+/// \brief Specifies whether to use abs nodes.
+enum UseAbsNodes : bool {
+  Abs = true,    ///< Use abs nodes.
+  NoAbs = false  ///< Don't use abs nodes.
+};
+
 /// Adds brackets to Text to define anchor locations (escaping existing ones)
 /// and sorts Anchors such that the ith Anchor corresponds to the ith opening
 /// bracket. Drops empty or negative-length spans.
@@ -93,34 +100,76 @@ void InsertAnchorMarks(std::string& Text, std::vector<MiniAnchor>& Anchors);
 /// \brief Used internally to check whether parts of the AST can be ignored.
 class PruneCheck;
 
+/// \brief Options that control how the indexer behaves.
+struct IndexerOptions {
+  /// \brief The directory to normalize paths against. Must be absolute.
+  std::string EffectiveWorkingDirectory = "/";
+  /// \brief Whether to allow access to the raw filesystem.
+  bool AllowFSAccess = false;
+  /// \brief Whether to drop data found to be template instantiation
+  /// independent.
+  bool DropInstantiationIndependentData = false;
+  /// \brief A function that is called as the indexer enters and exits various
+  /// phases of execution (in strict LIFO order).
+  ProfilingCallback ReportProfileEvent = [](const char*, ProfilingEvent) {};
+  /// \brief Whether to use the CompilationUnit VName corpus as the default
+  /// corpus.
+  bool UseCompilationCorpusAsDefault = false;
+  /// \brief Whether we should stop on missing cases or continue on.
+  BehaviorOnUnimplemented IgnoreUnimplemented = BehaviorOnUnimplemented::Abort;
+  /// \brief Whether we should visit template instantiations.
+  BehaviorOnTemplates TemplateMode = BehaviorOnTemplates::VisitInstantiations;
+  /// \brief Whether we should emit all data.
+  Verbosity Verbosity = kythe::Verbosity::Classic;
+  /// \brief Should we emit documentation for forward class decls in ObjC?
+  BehaviorOnFwdDeclComments ObjCFwdDocs = BehaviorOnFwdDeclComments::Emit;
+  /// \brief Should we emit documentation for forward decls in C++?
+  BehaviorOnFwdDeclComments CppFwdDocs = BehaviorOnFwdDeclComments::Emit;
+  /// \return true if we should stop indexing.
+  std::function<bool()> ShouldStopIndexing = [] { return false; };
+  /// \brief The number of (raw) bytes to use to represent a USR. If 0,
+  /// no USRs will be recorded.
+  int UsrByteSize = 0;
+  /// \brief Controls whether dataflow edges are emitted.
+  EmitDataflowEdges DataflowEdges = EmitDataflowEdges::No;
+  /// \brief Controls whether abs nodes are emitted.
+  UseAbsNodes AbsNodes = UseAbsNodes::Abs;
+  /// \brief if nonempty, the pattern to match a path against to see whether
+  /// it should be excluded from template instance indexing.
+  std::shared_ptr<re2::RE2> TemplateInstanceExcludePathPattern = nullptr;
+  /// \param Worklist A function that generates a new worklist for the given
+  /// visitor.
+  std::function<std::unique_ptr<IndexerWorklist>(IndexerASTVisitor*)>
+      CreateWorklist = [](IndexerASTVisitor* indexer) {
+        return IndexerWorklist::CreateDefaultWorklist(indexer);
+      };
+  /// \brief Notified each time a semantic signature is hashed.
+  HashRecorder* HashRecorder = nullptr;
+};
+
 /// \brief An AST visitor that extracts information for a translation unit and
 /// writes it to a `GraphObserver`.
 class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   using Base = RecursiveTypeVisitor;
 
  public:
-  IndexerASTVisitor(clang::ASTContext& C, BehaviorOnUnimplemented B,
-                    BehaviorOnTemplates T, Verbosity V,
-                    BehaviorOnFwdDeclComments ObjC,
-                    BehaviorOnFwdDeclComments Cpp, const LibrarySupports& S,
-                    clang::Sema& Sema, std::function<bool()> ShouldStopIndexing,
-                    GraphObserver* GO = nullptr, int UsrByteSize = 0,
-                    EmitDataflowEdges EDE = EmitDataflowEdges::No,
-                    std::shared_ptr<re2::RE2> TIEPP = nullptr)
-      : IgnoreUnimplemented(B),
-        TemplateMode(T),
-        Verbosity(V),
-        ObjCFwdDocs(ObjC),
-        CppFwdDocs(Cpp),
-        Observer(GO ? *GO : NullObserver),
+  IndexerASTVisitor(clang::ASTContext& C, const LibrarySupports& S,
+                    clang::Sema& Sema,
+                    const IndexerOptions& IO ABSL_ATTRIBUTE_LIFETIME_BOUND,
+                    GraphObserver* GO = nullptr)
+      : Observer(GO ? *GO : NullObserver),
         Context(C),
         Supports(S),
         Sema(Sema),
         MarkedSources(&Sema, &Observer),
-        ShouldStopIndexing(std::move(ShouldStopIndexing)),
-        UsrByteSize(UsrByteSize),
-        DataflowEdges(EDE),
-        TemplateInstanceExcludePathPattern(TIEPP) {}
+        options_(IO),
+        Hash(
+            [this](const clang::Decl* Decl) {
+              return BuildNameIdForDecl(Decl).ToString();
+            },
+            // These enums are intentionally compatible.
+            static_cast<SemanticHash::OnUnimplemented>(
+                options_.IgnoreUnimplemented)) {}
 
   bool VisitDecl(const clang::Decl* Decl);
   bool TraverseFieldDecl(clang::FieldDecl* Decl);
@@ -148,6 +197,7 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   bool VisitCXXPseudoDestructorExpr(const clang::CXXPseudoDestructorExpr* E);
   bool VisitCXXUnresolvedConstructExpr(
       const clang::CXXUnresolvedConstructExpr* E);
+  bool TraverseCXXOperatorCallExpr(clang::CXXOperatorCallExpr* E);
   bool VisitCallExpr(const clang::CallExpr* Expr);
   bool VisitMemberExpr(const clang::MemberExpr* Expr);
   bool VisitCXXDependentScopeMemberExpr(
@@ -177,6 +227,7 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   bool VisitDecltypeTypeLoc(clang::DecltypeTypeLoc TL);
   bool VisitElaboratedTypeLoc(clang::ElaboratedTypeLoc TL);
   bool VisitTypedefTypeLoc(clang::TypedefTypeLoc TL);
+  bool VisitUsingTypeLoc(clang::UsingTypeLoc TL);
   bool VisitInjectedClassNameTypeLoc(clang::InjectedClassNameTypeLoc TL);
   bool VisitDependentNameTypeLoc(clang::DependentNameTypeLoc TL);
   bool VisitPackExpansionTypeLoc(clang::PackExpansionTypeLoc TL);
@@ -193,6 +244,8 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   NodeSet RecordTypeLocSpellingLocation(clang::TypeLoc TL);
   NodeSet RecordTypeLocSpellingLocation(clang::TypeLoc Written,
                                         const clang::Type* Resolved);
+  NodeSet RecordTypeSpellingLocation(const clang::Type* Type,
+                                     clang::SourceRange Range);
 
   bool TraverseDeclarationNameInfo(clang::DeclarationNameInfo NameInfo);
 
@@ -325,14 +378,15 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   NodeSet BuildNodeSetForIncompleteArray(const clang::IncompleteArrayType& TL);
   NodeSet BuildNodeSetForDependentSizedArray(
       const clang::DependentSizedArrayType& T);
-  NodeSet BuildNodeSetForExtInt(const clang::ExtIntType& T);
-  NodeSet BuildNodeSetForDependentExtInt(const clang::DependentExtIntType& T);
+  NodeSet BuildNodeSetForBitInt(const clang::BitIntType& T);
+  NodeSet BuildNodeSetForDependentBitInt(const clang::DependentBitIntType& T);
   NodeSet BuildNodeSetForFunctionProto(const clang::FunctionProtoType& T);
   NodeSet BuildNodeSetForFunctionNoProto(const clang::FunctionNoProtoType& T);
   NodeSet BuildNodeSetForParen(const clang::ParenType& T);
   NodeSet BuildNodeSetForDecltype(const clang::DecltypeType& T);
   NodeSet BuildNodeSetForElaborated(const clang::ElaboratedType& T);
   NodeSet BuildNodeSetForTypedef(const clang::TypedefType& T);
+  NodeSet BuildNodeSetForUsing(const clang::UsingType& T);
 
   NodeSet BuildNodeSetForSubstTemplateTypeParm(
       const clang::SubstTemplateTypeParmType& T);
@@ -596,13 +650,13 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   bool TraverseTypeAliasTemplateDecl(clang::TypeAliasTemplateDecl* TATD);
 
   bool shouldVisitTemplateInstantiations() const {
-    return TemplateMode == BehaviorOnTemplates::VisitInstantiations;
+    return options_.TemplateMode == BehaviorOnTemplates::VisitInstantiations;
   }
   bool shouldEmitObjCForwardClassDeclDocumentation() const {
-    return ObjCFwdDocs == BehaviorOnFwdDeclComments::Emit;
+    return options_.ObjCFwdDocs == BehaviorOnFwdDeclComments::Emit;
   }
   bool shouldEmitCppForwardDeclDocumentation() const {
-    return CppFwdDocs == BehaviorOnFwdDeclComments::Emit;
+    return options_.CppFwdDocs == BehaviorOnFwdDeclComments::Emit;
   }
   bool shouldVisitImplicitCode() const { return true; }
   // Disables data recursion. We intercept Traverse* methods in the RAV, which
@@ -680,20 +734,20 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
             std::unique_ptr<IndexerWorklist> NewWorklist) {
     Worklist = std::move(NewWorklist);
     Worklist->EnqueueJob(absl::make_unique<IndexJob>(InitialDecl));
-    while (!ShouldStopIndexing() && Worklist->DoWork())
+    while (!options_.ShouldStopIndexing() && Worklist->DoWork())
       ;
     Observer.iterateOverClaimedFiles(
         [this, InitialDecl](clang::FileID Id,
                             const GraphObserver::NodeId& FileNode) {
           RunJob(absl::make_unique<IndexJob>(InitialDecl, Id, FileNode));
-          return !ShouldStopIndexing();
+          return !options_.ShouldStopIndexing();
         });
     Worklist.reset();
   }
 
   /// \brief Provides execute-only access to ShouldStopIndexing. Should be used
   /// from the same thread that's walking the AST.
-  bool shouldStopIndexing() const { return ShouldStopIndexing(); }
+  bool shouldStopIndexing() const { return options_.ShouldStopIndexing(); }
 
   /// Blames a call to `Callee` at `Range` on everything at the top of
   /// `BlameStack` (or does nothing if there's nobody to blame).
@@ -711,21 +765,6 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
 
  private:
   friend class PruneCheck;
-
-  /// Whether we should stop on missing cases or continue on.
-  BehaviorOnUnimplemented IgnoreUnimplemented;
-
-  /// Should we visit template instantiations?
-  BehaviorOnTemplates TemplateMode;
-
-  /// Should we emit all data?
-  enum Verbosity Verbosity;
-
-  /// Should we emit documentation for forward class decls in ObjC?
-  BehaviorOnFwdDeclComments ObjCFwdDocs;
-
-  /// Should we emit documentation for forward decls in C++?
-  BehaviorOnFwdDeclComments CppFwdDocs;
 
   NullGraphObserver NullObserver;
   GraphObserver& Observer;
@@ -951,6 +990,10 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
                            const clang::Decl* Decl) const;
   void LogErrorWithASTDump(absl::string_view msg,
                            const clang::Expr* Expr) const;
+  void LogErrorWithASTDump(absl::string_view msg,
+                           const clang::Type* Type) const;
+  void LogErrorWithASTDump(absl::string_view msg, clang::TypeLoc Type) const;
+  void LogErrorWithASTDump(absl::string_view msg, clang::QualType Type) const;
 
   /// \brief This is used to handle the visitation of a clang::TypedefDecl
   /// or a clang::TypeAliasDecl.
@@ -998,14 +1041,6 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   /// \brief Maps known Decls to their NodeIds.
   llvm::DenseMap<const clang::Decl*, GraphObserver::NodeId> DeclToNodeId;
 
-  /// \brief Used for calculating semantic hashes.
-  SemanticHash Hash{
-      [this](const clang::Decl* Decl) {
-        return BuildNameIdForDecl(Decl).ToString();
-      },
-      // These enums are intentionally compatible.
-      static_cast<SemanticHash::OnUnimplemented>(IgnoreUnimplemented)};
-
   /// \brief Enabled library-specific callbacks.
   const LibrarySupports& Supports;
 
@@ -1015,9 +1050,6 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   /// \brief The cache to use to generate signatures.
   MarkedSourceCache MarkedSources;
 
-  /// \return true if we should stop indexing.
-  std::function<bool()> ShouldStopIndexing;
-
   /// \brief The active indexing job.
   std::unique_ptr<IndexJob> Job;
 
@@ -1026,17 +1058,6 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
 
   /// \brief Comments we've already visited.
   std::unordered_set<const clang::RawComment*> VisitedComments;
-
-  /// \brief The number of (raw) bytes to use to represent a USR. If 0,
-  /// no USRs will be recorded.
-  int UsrByteSize = 0;
-
-  /// \brief Controls whether dataflow edges are emitted.
-  EmitDataflowEdges DataflowEdges;
-
-  /// \brief if nonempty, the pattern to match a path against to see whether
-  /// it should be excluded from template instance indexing.
-  std::shared_ptr<re2::RE2> TemplateInstanceExcludePathPattern = nullptr;
 
   /// \brief AST nodes we know are used in specific ways.
   absl::flat_hash_map<const clang::Stmt*, GraphObserver::UseKind> use_kinds_;
@@ -1057,42 +1078,30 @@ class IndexerASTVisitor : public RecursiveTypeVisitor<IndexerASTVisitor> {
   /// \brief Decls known to have alternate semantics.
   absl::flat_hash_map<const clang::Decl*, AlternateSemantic*>
       alternate_semantics_;
+
+  /// \brief Configurable indexer options.
+  const IndexerOptions& options_;
+
+  /// \brief Used for calculating semantic hashes.
+  SemanticHash Hash;
 };
 
 /// \brief An `ASTConsumer` that passes events to a `GraphObserver`.
 class IndexerASTConsumer : public clang::SemaConsumer {
  public:
-  explicit IndexerASTConsumer(
-      GraphObserver* GO, BehaviorOnUnimplemented B, BehaviorOnTemplates T,
-      Verbosity V, BehaviorOnFwdDeclComments ObjC,
-      BehaviorOnFwdDeclComments Cpp, const LibrarySupports& S,
-      std::function<bool()> ShouldStopIndexing,
-      std::function<std::unique_ptr<IndexerWorklist>(IndexerASTVisitor*)>
-          CreateWorklist,
-      int UsrByteSize, EmitDataflowEdges EDE, std::shared_ptr<re2::RE2> TIEPP)
-      : Observer(GO),
-        IgnoreUnimplemented(B),
-        TemplateMode(T),
-        Verbosity(V),
-        ObjCFwdDocs(ObjC),
-        CppFwdDocs(Cpp),
-        Supports(S),
-        ShouldStopIndexing(std::move(ShouldStopIndexing)),
-        CreateWorklist(std::move(CreateWorklist)),
-        UsrByteSize(UsrByteSize),
-        DataflowEdges(EDE),
-        TemplateInstanceExcludePathPattern(TIEPP) {}
+  explicit IndexerASTConsumer(GraphObserver* GO, const LibrarySupports& S,
+                              const IndexerOptions& IO
+                                  ABSL_ATTRIBUTE_LIFETIME_BOUND)
+      : Observer(GO), Supports(S), options_(IO) {}
 
   void HandleTranslationUnit(clang::ASTContext& Context) override {
     CHECK(Sema != nullptr);
-    IndexerASTVisitor Visitor(
-        Context, IgnoreUnimplemented, TemplateMode, Verbosity, ObjCFwdDocs,
-        CppFwdDocs, Supports, *Sema, ShouldStopIndexing, Observer, UsrByteSize,
-        DataflowEdges, TemplateInstanceExcludePathPattern);
+    IndexerASTVisitor Visitor(Context, Supports, *Sema, options_, Observer);
     {
       ProfileBlock block(Observer->getProfilingCallback(), "traverse_tu");
       Visitor.PrepareAlternateSemanticCache();
-      Visitor.Work(Context.getTranslationUnitDecl(), CreateWorklist(&Visitor));
+      Visitor.Work(Context.getTranslationUnitDecl(),
+                   options_.CreateWorklist(&Visitor));
     }
   }
 
@@ -1102,33 +1111,12 @@ class IndexerASTConsumer : public clang::SemaConsumer {
 
  private:
   GraphObserver* const Observer;
-  /// Whether we should stop on missing cases or continue on.
-  BehaviorOnUnimplemented IgnoreUnimplemented;
-  /// Whether we should visit template instantiations.
-  BehaviorOnTemplates TemplateMode;
-  /// Whether we should emit all data.
-  enum Verbosity Verbosity;
-  /// Should we emit documentation for forward class decls in ObjC?
-  BehaviorOnFwdDeclComments ObjCFwdDocs;
-  /// Should we emit documentation for forward decls in C++?
-  BehaviorOnFwdDeclComments CppFwdDocs;
   /// Which library supports are enabled.
   const LibrarySupports& Supports;
   /// The active Sema instance.
   clang::Sema* Sema;
-  /// \return true if we should stop indexing.
-  std::function<bool()> ShouldStopIndexing;
-  /// \return a new worklist for the given visitor.
-  std::function<std::unique_ptr<IndexerWorklist>(IndexerASTVisitor*)>
-      CreateWorklist;
-  /// \brief The number of (raw) bytes to use to represent a USR. If 0,
-  /// no USRs will be recorded.
-  int UsrByteSize = 0;
-  /// \brief Controls whether dataflow edges are emitted.
-  EmitDataflowEdges DataflowEdges;
-  /// \brief if nonempty, the pattern to match a path against to see whether
-  /// it should be excluded from template instance indexing.
-  std::shared_ptr<re2::RE2> TemplateInstanceExcludePathPattern;
+  /// \brief Configurable options for the indexer.
+  const IndexerOptions& options_;
 };
 
 }  // namespace kythe

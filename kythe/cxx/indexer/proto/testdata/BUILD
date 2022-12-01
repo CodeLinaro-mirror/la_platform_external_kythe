@@ -69,6 +69,12 @@ proto_verifier_test(
 )
 
 proto_verifier_test(
+    name = "map_test",
+    srcs = [":basic_map_proto"],
+    tags = ["basic"],
+)
+
+proto_verifier_test(
     name = "proto3",
     srcs = [":proto3_proto"],
     tags = ["basic"],
@@ -196,8 +202,14 @@ proto_library(
 )
 
 proto_library(
+    name = "basic_map_proto",
+    srcs = ["basic/map.proto"],
+)
+
+proto_library(
     name = "corner_cases_import_syntax_proto",
     srcs = ["corner_cases/import_syntax.proto"],
+    exports = [":basic_oneof_proto"],
     deps = [
         ":basic_nested_message_proto",
         ":basic_oneof_proto",

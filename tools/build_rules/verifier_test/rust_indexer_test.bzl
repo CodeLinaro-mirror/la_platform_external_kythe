@@ -20,7 +20,7 @@ through the verifier
 """
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
+load("//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
 load(
     "//tools/build_rules/verifier_test:verifier_test.bzl",
     "KytheEntries",
@@ -41,22 +41,40 @@ def _rust_extract_impl(ctx):
 
     # Rust toolchain
     rust_toolchain = ctx.toolchains["@rules_rust//rust:toolchain"]
-    rustc_lib = rust_toolchain.rustc_lib.files.to_list()
-    rust_lib = rust_toolchain.rust_lib.files.to_list()
+    rustc_lib = rust_toolchain.rustc_lib.to_list()
+    rust_std = rust_toolchain.rust_std.to_list()
+
+    # Copy out_dir_files to out_dir
+    all_out_dir_files = []
+    for f in ctx.files.out_dir_files:
+        out = ctx.actions.declare_file("out_dir/%s" % f.basename)
+        all_out_dir_files.append(out)
+        ctx.actions.run_shell(
+            outputs = [out],
+            inputs = depset([f]),
+            arguments = [f.path, out.path],
+            command = "cp $1 $2",
+        )
 
     # Generate extra_action file to be used by the extractor
     extra_action_file = ctx.actions.declare_file(ctx.label.name + ".xa")
     xa_maker = ctx.executable._extra_action
+    args = [
+        "--src_files=%s" % ",".join([f.path for f in ctx.files.srcs]),
+        "--output=%s" % extra_action_file.path,
+        "--owner=%s" % ctx.label.name,
+        "--crate_name=%s" % ctx.attr.crate_name,
+        "--sysroot=%s" % paths.dirname(rust_std[0].path),
+        "--linker=%s" % linker_path,
+    ]
+
+    # If there were out_dir_files, set --out_dir_env
+    if len(all_out_dir_files) != 0:
+        args.append("--out_dir_env=${pwd}/%s" % paths.dirname(all_out_dir_files[0].path))
+
     ctx.actions.run(
         executable = xa_maker,
-        arguments = [
-            "--src_files=%s" % ",".join([f.path for f in ctx.files.srcs]),
-            "--output=%s" % extra_action_file.path,
-            "--owner=%s" % ctx.label.name,
-            "--crate_name=%s" % ctx.attr.crate_name,
-            "--sysroot=%s" % paths.dirname(rust_lib[0].path),
-            "--linker=%s" % linker_path,
-        ],
+        arguments = args,
         outputs = [extra_action_file],
     )
 
@@ -70,13 +88,14 @@ def _rust_extract_impl(ctx):
             "--output=%s" % output.path,
             "--vnames_config=%s" % ctx.file._vnames_config_file.path,
         ],
-        inputs = [extra_action_file, ctx.file._vnames_config_file] + rustc_lib + rust_lib + ctx.files.srcs,
+        inputs = [extra_action_file, ctx.file._vnames_config_file] + rustc_lib + rust_std + ctx.files.srcs + all_out_dir_files,
         outputs = [output],
         env = {
             "KYTHE_CORPUS": "test_corpus",
         },
     )
 
+    # buildifier: disable=rule-impl-return
     return struct(kzip = output)
 
 # Generate a kzip with the compilations captured from a single Go library or
@@ -90,6 +109,10 @@ rust_extract = rule(
             allow_files = True,
         ),
         "srcs": attr.label_list(
+            mandatory = True,
+            allow_files = [".rs"],
+        ),
+        "out_dir_files": attr.label_list(
             mandatory = True,
             allow_files = [".rs"],
         ),
@@ -118,11 +141,9 @@ rust_extract = rule(
     },
     outputs = {"kzip": "%{name}.kzip"},
     fragments = ["cpp"],
-    toolchains = [
+    toolchains = use_cpp_toolchain() + [
         "@rules_rust//rust:toolchain",
-        "@bazel_tools//tools/cpp:toolchain_type",
     ],
-    incompatible_use_toolchain_transition = True,
 )
 
 def _rust_entries_impl(ctx):
@@ -184,15 +205,14 @@ rust_entries = rule(
 def _rust_indexer(
         name,
         srcs,
-        data = None,
+        out_dir_files = [],
         has_marked_source = False,
-        emit_anchor_scopes = False,
-        allow_duplicates = False,
-        metadata_suffix = ""):
+        emit_anchor_scopes = False):
     kzip = name + "_units"
     rust_extract(
         name = kzip,
         srcs = srcs,
+        out_dir_files = out_dir_files,
     )
     entries = name + "_entries"
     rust_entries(
@@ -203,19 +223,37 @@ def _rust_indexer(
     )
     return entries
 
+# buildifier: disable=function-docstring-return
 def rust_indexer_test(
         name,
         srcs,
+        out_dir_files = [],
         size = None,
         tags = None,
         log_entries = False,
         has_marked_source = False,
         emit_anchor_scopes = False,
         allow_duplicates = False):
+    """
+    Runs a Rust verifier test on the source files
+
+    Args:
+      name: Rule name
+      srcs: A list of Rust source files to index and verify
+      out_dir_files: A list of files to include in $OUT_DIR
+      size: The size to pass to the verifier_test macro
+      tags: The tags to pass to the verifier_test macro
+      log_entries: Enable to make the verifier log all indexer entries
+      has_marked_source: Enable to make the indexer emit Marked Source (unused)
+      emit_anchor_scopes: Enable to make the indexer emit anchor scopes (unused)
+      allow_duplicates: Enable to make the verifier ignore duplicate entries
+    """
+
     # Generate entries using the Rust indexer
     entries = _rust_indexer(
         name = name,
         srcs = srcs,
+        out_dir_files = out_dir_files,
         has_marked_source = has_marked_source,
         emit_anchor_scopes = emit_anchor_scopes,
     )

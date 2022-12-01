@@ -30,7 +30,7 @@ load(
 
 # Emit a shell script that sets up the environment needed by the extractor to
 # capture dependencies and runs the extractor.
-def _emit_extractor_script(ctx, mode, script, output, srcs, deps, ipath, data):
+def _emit_extractor_script(ctx, mode, script, output, srcs, deps, ipath, data, extra_extractor_args):
     tmpdir = output.dirname + "/tmp"
     srcroot = tmpdir + "/src"
     srcdir = srcroot + "/" + ipath
@@ -63,8 +63,8 @@ def _emit_extractor_script(ctx, mode, script, output, srcs, deps, ipath, data):
     goroot = "/".join(ctx.files._sdk_files[0].path.split("/")[:-2])
     cmds.append("export GOCACHE=\"$PWD/" + tmpdir + "/cache\"")
     cmds.append("export CGO_ENABLED=0")
-    cmds.append(" ".join([
-        ctx.files._extractor[-1].path,
+
+    args = [ctx.files._extractor[-1].path] + extra_extractor_args + [
         "-output",
         output.path,
         "-goos",
@@ -80,7 +80,8 @@ def _emit_extractor_script(ctx, mode, script, output, srcs, deps, ipath, data):
         "-extra_files",
         "'%s'" % ",".join(extras),
         ipath,
-    ]))
+    ]
+    cmds.append(" ".join(args))
 
     f = ctx.actions.declare_file(script)
     ctx.actions.write(output = f, content = "\n".join(cmds), is_executable = True)
@@ -109,6 +110,7 @@ def _go_extract(ctx):
         deps,
         ipath,
         data,
+        ctx.attr.extra_extractor_args,
     )
 
     extras = []
@@ -148,6 +150,7 @@ go_extract = rule(
             allow_files = True,
             default = "@go_sdk//:files",
         ),
+        "extra_extractor_args": attr.string_list(),
     },
     outputs = {"kzip": "%{name}.kzip"},
     toolchains = ["@io_bazel_rules_go//go:toolchain"],
@@ -168,6 +171,9 @@ def _go_entries(ctx):
 
     if ctx.attr.use_compilation_corpus_as_default:
         iargs.append("-use_compilation_corpus_as_default")
+
+    if ctx.attr.override_stdlib_corpus:
+        iargs.append("-override_stdlib_corpus=%s" % ctx.attr.override_stdlib_corpus)
 
     # If the test wants linkage metadata, enable support for it in the indexer.
     if ctx.attr.metadata_suffix:
@@ -204,6 +210,7 @@ go_entries = rule(
         # The suffix used to recognize linkage metadata files, if non-empty.
         "metadata_suffix": attr.string(default = ""),
         "use_compilation_corpus_as_default": attr.bool(default = False),
+        "override_stdlib_corpus": attr.string(default = ""),
 
         # The location of the Go indexer binary.
         "_indexer": attr.label(
@@ -224,7 +231,7 @@ def go_verifier_test(
         log_entries = False,
         has_marked_source = False,
         allow_duplicates = False):
-    opts = ["--use_file_nodes", "--show_goals", "--check_for_singletons"]
+    opts = ["--use_file_nodes", "--show_goals", "--check_for_singletons", "--goal_regex='\\s*//\\s*-(.*)'"]
     if log_entries:
         opts.append("--show_protos")
     if allow_duplicates or len(deps) > 0:
@@ -252,7 +259,9 @@ def _go_indexer(
         emit_anchor_scopes = False,
         allow_duplicates = False,
         use_compilation_corpus_as_default = False,
-        metadata_suffix = ""):
+        override_stdlib_corpus= "",
+        metadata_suffix = "",
+        extra_extractor_args = []):
     if importpath == None:
         importpath = native.package_name() + "/" + name
     lib = name + "_lib"
@@ -267,6 +276,7 @@ def _go_indexer(
         name = kzip,
         data = data,
         library = lib,
+        extra_extractor_args = extra_extractor_args,
     )
     entries = name + "_entries"
     go_entries(
@@ -274,6 +284,7 @@ def _go_indexer(
         has_marked_source = has_marked_source,
         emit_anchor_scopes = emit_anchor_scopes,
         use_compilation_corpus_as_default = use_compilation_corpus_as_default,
+        override_stdlib_corpus = override_stdlib_corpus,
         kzip = ":" + kzip,
         metadata_suffix = metadata_suffix,
     )
@@ -294,7 +305,9 @@ def go_indexer_test(
         emit_anchor_scopes = False,
         allow_duplicates = False,
         use_compilation_corpus_as_default = False,
-        metadata_suffix = ""):
+        override_stdlib_corpus= "",
+        metadata_suffix = "",
+        extra_extractor_args = []):
     entries = _go_indexer(
         name = name,
         srcs = srcs,
@@ -302,9 +315,11 @@ def go_indexer_test(
         has_marked_source = has_marked_source,
         emit_anchor_scopes = emit_anchor_scopes,
         use_compilation_corpus_as_default = use_compilation_corpus_as_default,
+        override_stdlib_corpus=override_stdlib_corpus,
         importpath = import_path,
         metadata_suffix = metadata_suffix,
         deps = deps,
+        extra_extractor_args = extra_extractor_args,
     )
     go_verifier_test(
         name = name,

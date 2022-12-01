@@ -1,24 +1,23 @@
 package pkg;
 
 @SuppressWarnings("unused")
-//- @Generics=vname(_, Corpus, Root, Path, _) defines/binding GAbs
-//- Class childof GAbs=vname(_, Corpus, Root, Path, _)
-//- GAbs.node/kind abs
-//- GAbs param.0 TVar
+//- @Generics defines/binding Class
+//- Class.node/kind record
 //- @T defines/binding TVar
-//- TVar.node/kind absvar
+//- TVar.node/kind tvar
+//- Class tparam.0 TVar
 public class Generics<T> {
+  //- !{ _.node/kind abs }
+  //- !{ _.node/kind absvar }
+
   //- @obj defines/binding V
   //- V typed Obj
   Object obj;
 
   //- @print defines/binding PrintMethod
-  //- @print defines/binding PrintAbs
-  //- PrintMethod childof PrintAbs
-  //- PrintAbs.node/kind abs
   //- @P defines/binding PVar
-  //- PrintAbs param.0 PVar
-  //- PVar.node/kind absvar
+  //- PrintMethod tparam.0 PVar
+  //- PVar.node/kind tvar
   //- PVar bounded/upper.0 Obj
   public static <P> void print(
       //- @P ref PVar
@@ -34,10 +33,10 @@ public class Generics<T> {
     //- @gs defines/binding GVar
     //- GVar typed GType
     //- GType.node/kind tapp
-    //- GType param.0 GAbs
+    //- GType param.0 Class
     //- GType param.1 _Str
     Generics<String> gs =
-        //- @"Generics<String>" ref GType
+        //- @"Generics<String>" ref/id GType
         new Generics<String>();
 
     //- @"Generics" ref Class
@@ -45,26 +44,26 @@ public class Generics<T> {
     //- NGVar typed NGType
     //- NGType.node/kind record
     Generics nonGeneric =
-        //- @"Generics" ref Class
+        //- @"Generics" ref/id Class
         new Generics();
 
     //- @"Optional<Generics<String>>" ref OType
     //- OType.node/kind tapp
-    //- OType param.0 _Optional
+    //- OType param.0 OptionalClass
     //- OType param.1 GType
     //- @opt defines/binding OVar
     //- OVar typed OType
     Optional<Generics<String>> opt;
   }
 
-  //- @Optional defines/binding OptionalAbs
-  //- _OptionalClass childof OptionalAbs
+  //- @Optional defines/binding OptionalClass
   //- @T defines/binding OptionalTVar
-  //- OptionalTVar.node/kind absvar
+  //- OptionalTVar.node/kind tvar
+  //- OptionalClass tparam.0 OptionalTVar
   private static class Optional<T> {}
 
   //- @U defines/binding UVar
-  //- UVar.node/kind absvar
+  //- UVar.node/kind tvar
   //- @List ref List
   //- @Inter ref Inter
   //- UVar bounded/upper.0 List

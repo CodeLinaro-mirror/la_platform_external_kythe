@@ -18,19 +18,18 @@
 //
 // Usage example: Indexing a Kythe CompilationUnit message.
 //
-//   // Obtain a compilation from some source, e.g., an kzip.
-//   var unit *apb.CompilationUnit = ...
+//	// Obtain a compilation from some source, e.g., an kzip.
+//	var unit *apb.CompilationUnit = ...
 //
-//   // Parse the sources and resolve types.
-//   pi, err := indexer.Resolve(unit, pack, &indexer.ResolveOptions{
-//     Info: indexer.AllTypeInfo(),
-//   })
-//   if err != nil {
-//     log.Fatal("Resolving failed: %v", err)
-//   }
-//   // Type information from http://godoc.org/go/types is now available
-//   // from pi.Info, which is a *types.Info record.
-//
+//	// Parse the sources and resolve types.
+//	pi, err := indexer.Resolve(unit, pack, &indexer.ResolveOptions{
+//	  Info: indexer.AllTypeInfo(),
+//	})
+//	if err != nil {
+//	  log.Fatal("Resolving failed: %v", err)
+//	}
+//	// Type information from http://godoc.org/go/types is now available
+//	// from pi.Info, which is a *types.Info record.
 package indexer // import "kythe.io/kythe/go/indexer"
 
 import (
@@ -262,9 +261,11 @@ func Resolve(unit *apb.CompilationUnit, f Fetcher, opts *ResolveOptions) (*Packa
 	//
 	// The build context is used to check build tags.
 	bc := &build.Context{
-		GOOS:      details.GetGoos(),
-		GOARCH:    details.GetGoarch(),
-		BuildTags: details.GetBuildTags(),
+		GOOS:        details.GetGoos(),
+		GOARCH:      details.GetGoarch(),
+		BuildTags:   details.GetBuildTags(),
+		ReleaseTags: build.Default.ReleaseTags,
+		ToolTags:    build.Default.ToolTags,
 	}
 	for _, ri := range unit.RequiredInput {
 		if ri.Info == nil {
@@ -418,7 +419,6 @@ func Resolve(unit *apb.CompilationUnit, f Fetcher, opts *ResolveOptions) (*Packa
 		Error: func(err error) { pi.Errors = append(pi.Errors, err) },
 	}
 	pi.Package, _ = c.Check(pi.Name, pi.FileSet, pi.Files, pi.Info)
-	pi.PackageVName[pi.Package] = unit.VName
 
 	// Fill in the mapping from packages to vnames.
 	for ip, vname := range imap {
@@ -436,6 +436,7 @@ func Resolve(unit *apb.CompilationUnit, f Fetcher, opts *ResolveOptions) (*Packa
 	pi.VName = proto.Clone(unit.VName).(*spb.VName)
 	pi.VName.Language = govname.Language
 	pi.VName.Signature = "package"
+	pi.PackageVName[pi.Package] = pi.VName
 
 	return pi, nil
 }
@@ -552,6 +553,7 @@ const (
 	tagLabel  = "label"
 	tagMethod = "method"
 	tagParam  = "param"
+	tagTVar   = "tvar"
 	tagType   = "type"
 	tagVar    = "var"
 )
@@ -587,7 +589,7 @@ func (pi *PackageInfo) newSignature(obj types.Object) (tag, base string) {
 				_, base := pi.newSignature(owner)
 				return tagField, base + "." + t.Name()
 			}
-			return tagField, fmt.Sprintf("[%p].%s", t, t.Name())
+			return tagField, pi.anonSignature(t)
 		} else if owner, ok := pi.owner[t]; ok {
 			_, base := pi.newSignature(owner)
 			return tagParam, base + ":" + t.Name()
@@ -610,13 +612,16 @@ func (pi *PackageInfo) newSignature(obj types.Object) (tag, base string) {
 		}
 
 	case *types.TypeName:
+		if param, ok := t.Type().(*types.TypeParam); ok {
+			return tagTVar, fmt.Sprintf("[%p]%s", t, param.String())
+		}
 		topLevelTag = tagType
 		if t.Pkg() == nil {
 			return isBuiltin + tagType, t.Name()
 		}
 
 	case *types.Label:
-		return tagLabel, fmt.Sprintf("[%p].%s", t, t.Name())
+		return tagLabel, pi.anonSignature(t)
 
 	default:
 		log.Panicf("Unexpected object kind: %T", obj)
@@ -634,7 +639,17 @@ func (pi *PackageInfo) newSignature(obj types.Object) (tag, base string) {
 	}
 
 	// Objects in interior (local) scopes, i.e., everything else.
-	return topLevelTag, fmt.Sprintf("[%p].%s", obj, obj.Name())
+	return topLevelTag, pi.anonSignature(obj)
+}
+
+func (pi *PackageInfo) anonSignature(obj types.Object) string {
+	// Use the object's line number and file basename to differentiate the
+	// node while allowing for cross-package references (other parts of the
+	// Position may differ).  This may collide if a source file isn't gofmt'd
+	// and defines multiple anonymous fields with the same name on the same
+	// line, but that's unlikely to happen in practice.
+	pos := pi.FileSet.Position(obj.Pos())
+	return fmt.Sprintf("[%s#%d].%s", filepath.Base(pos.Filename), pos.Line, obj.Name())
 }
 
 // addOwners updates pi.owner from the types in pkg, adding mapping from fields
@@ -656,16 +671,16 @@ func (pi *PackageInfo) newSignature(obj types.Object) (tag, base string) {
 // to types T and U, even though according the syntax, it belongs primarily to
 // T in the first example and U in the second:
 //
-//      type T struct {X int}
-//      type U T
+//	type T struct {X int}
+//	type U T
 //
-//      type T U
-//      type U struct {X int}
+//	type T U
+//	type U struct {X int}
 //
 // Similarly:
 //
-//      type U struct {X int}
-//      type V struct {U}
+//	type U struct {X int}
+//	type V struct {U}
 //
 // TODO(adonovan): sameer@ points out a useful heuristic: in a case of struct
 // or interface embedding, if one struct/interface has fewer fields/methods,
@@ -675,17 +690,17 @@ func (pi *PackageInfo) newSignature(obj types.Object) (tag, base string) {
 // from outside the package but for which we can't easily come up with good
 // names.  Here are some examples:
 //
-//      // package p
-//      var V1, V2 struct {X int} = ...
-//      func F() struct{X int} {...}
-//      type T struct {
-//              Y struct { X int }
-//      }
+//	// package p
+//	var V1, V2 struct {X int} = ...
+//	func F() struct{X int} {...}
+//	type T struct {
+//	        Y struct { X int }
+//	}
 //
-//      // main
-//      p.V2.X = 1
-//      print(p.F().X)
-//      new(p.T).Y[0].X
+//	// main
+//	p.V2.X = 1
+//	print(p.F().X)
+//	new(p.T).Y[0].X
 //
 // Also note that there may be arbitrary pointer, struct, chan, map, array, and
 // slice type constructors between the type of the exported package member (V2,
@@ -693,6 +708,14 @@ func (pi *PackageInfo) newSignature(obj types.Object) (tag, base string) {
 // names.  They should be rare in readable code.
 func (pi *PackageInfo) addOwners(pkg *types.Package, ownerByPos map[token.Position]types.Object, unownedByPos map[token.Position][]types.Object) {
 	scope := pkg.Scope()
+	addTypeParams := func(obj types.Object, params *types.TypeParamList) {
+		mapTypeParams(params, func(i int, param *types.TypeParam) {
+			typeName := param.Obj()
+			if _, ok := pi.owner[typeName]; !ok {
+				pi.owner[typeName] = obj
+			}
+		})
+	}
 	addFunc := func(obj *types.Func) {
 		// Inspect the receiver, parameters, and result values.
 		fsig := obj.Type().(*types.Signature)
@@ -709,6 +732,8 @@ func (pi *PackageInfo) addOwners(pkg *types.Package, ownerByPos map[token.Positi
 				pi.owner[res.At(i)] = obj
 			}
 		}
+		addTypeParams(obj, fsig.TypeParams())
+		addTypeParams(obj, fsig.RecvTypeParams())
 	}
 	addMethods := func(obj types.Object, n int, method func(i int) *types.Func) {
 		for i := 0; i < n; i++ {
@@ -751,6 +776,31 @@ func (pi *PackageInfo) addOwners(pkg *types.Package, ownerByPos map[token.Positi
 			}
 		}
 	}
+	addNamed := func(obj types.Object, named *types.Named) {
+		addTypeParams(obj, named.TypeParams())
+		switch t := named.Underlying().(type) {
+		case *types.Struct:
+			// Inspect the fields of a struct.
+			for i := 0; i < t.NumFields(); i++ {
+				f := t.Field(i)
+				if f.Pkg() != pkg && named.TypeArgs().Len() == 0 {
+					continue // wrong package (and not an instantiated type)
+				}
+				if _, ok := pi.owner[f]; !ok {
+					pi.owner[f] = obj
+				}
+			}
+			addMethods(obj, named.NumMethods(), named.Method)
+
+		case *types.Interface:
+			// Inspect the declared methods of an interface.
+			addMethods(obj, t.NumExplicitMethods(), t.ExplicitMethod)
+
+		default:
+			// Inspect declared methods of other named types.
+			addMethods(obj, named.NumMethods(), named.Method)
+		}
+	}
 
 	for _, name := range scope.Names() {
 		switch obj := scope.Lookup(name).(type) {
@@ -762,32 +812,31 @@ func (pi *PackageInfo) addOwners(pkg *types.Package, ownerByPos map[token.Positi
 			if !ok {
 				continue
 			}
-			switch t := named.Underlying().(type) {
-			case *types.Struct:
-				// Inspect the fields of a struct.
-				for i := 0; i < t.NumFields(); i++ {
-					f := t.Field(i)
-					if f.Pkg() != pkg {
-						continue // wrong package
-					}
-					if _, ok := pi.owner[f]; !ok {
-						pi.owner[f] = obj
-					}
-				}
-				addMethods(obj, named.NumMethods(), named.Method)
-
-			case *types.Interface:
-				// Inspect the declared methods of an interface.
-				addMethods(obj, t.NumExplicitMethods(), t.ExplicitMethod)
-
-			default:
-				// Inspect declared methods of other named types.
-				addMethods(obj, named.NumMethods(), named.Method)
-			}
+			addNamed(obj, named)
 
 		case *types.Func:
 			addFunc(obj)
 		}
+	}
+
+	if pkg == pi.Package {
+		// Add owners for members of known known instantiations
+		for _, t := range pi.Info.Types {
+			if n, ok := t.Type.(*types.Named); ok && n.TypeArgs().Len() > 0 {
+				addNamed(n.Obj(), n)
+			}
+		}
+	}
+}
+
+// mapTypeParams applies f to each type parameter declared in params.  Each call
+// to f is given the offset and the type parameter.
+func mapTypeParams(params *types.TypeParamList, f func(i int, id *types.TypeParam)) {
+	if params == nil {
+		return
+	}
+	for i := 0; i < params.Len(); i++ {
+		f(i, params.At(i))
 	}
 }
 

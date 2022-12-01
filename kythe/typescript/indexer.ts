@@ -128,11 +128,14 @@ function stripExtension(path: string): string {
  *   https://www.typescriptlang.org/docs/handbook/declaration-merging.html
  * for a listing of namespace groups for various declaration types and further
  * discussion.
+ *
+ * TYPE_MIGRATION is a temporary namespace to be used during the tvar migration.
  */
 export enum TSNamespace {
   TYPE,
   VALUE,
   NAMESPACE,
+  TYPE_MIGRATION,
 }
 
 /**
@@ -608,6 +611,8 @@ class StandardIndexerContext implements IndexerHost {
       vname.signature += '#type';
     } else if (ns === TSNamespace.NAMESPACE) {
       vname.signature += '#namespace';
+    } else if (ns === TSNamespace.TYPE_MIGRATION) {
+      vname.signature += '#mtype';
     }
 
     // Cache the VName for future lookups.
@@ -754,6 +759,9 @@ class Visitor {
   /** influencers is a stack of influencer VNames. */
   private readonly influencers: Set<VName>[] = [];
 
+  /** Cached anchor nodes. Signature is used as key. */
+  private readonly anchors = new Map<string, VName>();
+
   constructor(
       private readonly host: IndexerHost,
       private file: ts.SourceFile,
@@ -782,15 +790,21 @@ class Visitor {
   }
 
   /** newAnchor emits a new anchor entry that covers a TypeScript node. */
-  newAnchor(node: ts.Node, start = node.getStart(), end = node.end): VName {
-    const name = Object.assign(
-        {...this.kFile}, {signature: `@${start}:${end}`, language: LANGUAGE});
+  newAnchor(node: ts.Node, start = node.getStart(), end = node.end, tag = ''):
+      VName {
+    const signature = `@${tag}${start}:${end}`;
+    const cachedName = this.anchors.get(signature);
+    if (cachedName != null) return cachedName;
+
+    const name =
+        Object.assign({...this.kFile}, {signature, language: LANGUAGE});
     this.emitNode(name, NodeKind.ANCHOR);
     const offsetTable = this.host.getOffsetTable(node.getSourceFile().fileName);
     this.emitFact(
         name, FactName.LOC_START, offsetTable.lookupUtf8(start).toString());
     this.emitFact(
         name, FactName.LOC_END, offsetTable.lookupUtf8(end).toString());
+    this.anchors.set(signature, name);
     return name;
   }
 
@@ -849,8 +863,11 @@ class Visitor {
     this.influencers.push(new Set<VName>());
   }
 
-  visitTypeParameters(params: ReadonlyArray<ts.TypeParameterDeclaration>) {
-    for (const param of params) {
+  visitTypeParameters(
+      parent: VName|undefined,
+      params: ReadonlyArray<ts.TypeParameterDeclaration>) {
+    for (var ordinal = 0; ordinal < params.length; ++ordinal) {
+      const param = params[ordinal];
       const sym = this.host.getSymbolAtLocation(param.name);
       if (!sym) {
         todo(
@@ -858,18 +875,23 @@ class Visitor {
             `type param ${param.getText()} has no symbol`);
         return;
       }
-      const kType = this.host.getSymbolName(sym, TSNamespace.TYPE);
-      if (!kType) continue;
-      this.emitNode(kType, NodeKind.ABSVAR);
-      this.emitEdge(
-          this.newAnchor(param.name), EdgeKind.DEFINES_BINDING, kType);
-      // ...<T extends A>
-      if (param.constraint) {
-        const superType = this.visitType(param.constraint);
-        if (superType) this.emitEdge(kType, EdgeKind.BOUNDED_UPPER, superType);
+      const kTVar = this.host.getSymbolName(sym, TSNamespace.TYPE_MIGRATION);
+      if (kTVar && parent) {
+        this.emitNode(kTVar, NodeKind.TVAR);
+        this.emitEdge(
+            this.newAnchor(
+                param.name, param.name.getStart(), param.name.end, 'M'),
+            EdgeKind.DEFINES_BINDING, kTVar);
+        this.emitEdge(parent, makeOrdinalEdge(EdgeKind.TPARAM, ordinal), kTVar);
+        // ...<T extends A>
+        if (param.constraint) {
+          var superType = this.visitType(param.constraint);
+          if (superType)
+            this.emitEdge(kTVar, EdgeKind.BOUNDED_UPPER, superType);
+        }
+        // ...<T = A>
+        if (param.default) this.visitType(param.default);
       }
-      // ...<T = A>
-      if (param.default) this.visitType(param.default);
     }
   }
 
@@ -890,6 +912,15 @@ class Visitor {
         this.forAllInfluencers(influencer => {
           this.emitEdge(influencer, EdgeKind.INFLUENCES, containingVName);
         });
+      }
+      // Handle case like
+      // "return {name: 'Alice'};"
+      // where return type of the function is a named type, e.g. Person.
+      // This will connect 'name' property of the object literal to the
+      // Person.name property.
+      if (node.expression && ts.isObjectLiteralExpression(node.expression)) {
+        this.connectObjectLiteralToType(
+            node.expression, containingFunction.type);
       }
     }
     this.popInfluencers();
@@ -927,6 +958,22 @@ class Visitor {
     }
     if (containingVName) {
       this.emitEdge(callAnchor, EdgeKind.CHILD_OF, containingVName);
+    }
+    // Handle function/constructor calls like `doSomething({name: 'Alice'})`
+    // where type of the argument is, for example, an interface Person. This
+    // will add ref from object literal 'name' property to Person.name field.
+    if (node.arguments != null) {
+      const signature = this.typeChecker.getResolvedSignature(node);
+      if (signature == null) return;
+      for (let i = 0; i < node.arguments.length; i++) {
+        const argument = node.arguments[i];
+        // get parameter of the function/constructor signature.
+        const signParameter = signature.parameters[i]?.valueDeclaration;
+        if (ts.isObjectLiteralExpression(argument) && signParameter &&
+            ts.isParameter(signParameter)) {
+          this.connectObjectLiteralToType(argument, signParameter.type);
+        }
+      }
     }
   }
 
@@ -995,7 +1042,8 @@ class Visitor {
       this.visitJSDoc(decl, kType);
     }
 
-    if (decl.typeParameters) this.visitTypeParameters(decl.typeParameters);
+    if (decl.typeParameters)
+      this.visitTypeParameters(kType, decl.typeParameters);
     if (decl.heritageClauses) this.visitHeritage(kType, decl.heritageClauses);
     for (const member of decl.members) {
       this.visit(member);
@@ -1016,7 +1064,8 @@ class Visitor {
     this.emitEdge(this.newAnchor(decl.name), EdgeKind.DEFINES_BINDING, kType);
     this.visitJSDoc(decl, kType);
 
-    if (decl.typeParameters) this.visitTypeParameters(decl.typeParameters);
+    if (decl.typeParameters)
+      this.visitTypeParameters(kType, decl.typeParameters);
     const kAlias = this.visitType(decl.type);
     // Emit an "aliases" edge if the aliased type has a singular VName.
     if (kAlias) {
@@ -1056,8 +1105,15 @@ class Visitor {
           return;
         }
         const name = this.host.getSymbolName(sym, TSNamespace.TYPE);
-        if (!name) return;
-        this.emitEdge(this.newAnchor(node), EdgeKind.REF, name);
+        if (name) {
+          this.emitEdge(this.newAnchor(node), EdgeKind.REF, name);
+        }
+        const mname = this.host.getSymbolName(sym, TSNamespace.TYPE_MIGRATION);
+        if (mname) {
+          this.emitEdge(
+              this.newAnchor(node, node.getStart(), node.end, 'M'),
+              EdgeKind.REF, mname);
+        }
         return name;
       case ts.SyntaxKind.TypeReference:
         const typeRef = node as ts.TypeReferenceNode;
@@ -1593,6 +1649,11 @@ class Visitor {
         for (const element of (decl.name as ts.BindingPattern).elements) {
           this.visit(element);
         }
+        // Handle case like `const {name} = p;` where p is or type Person.
+        // This will add ref from the `name` variable to Person.name.
+        if (ts.isObjectBindingPattern(decl.name)) {
+          this.connectObjectBindingPatternToType(decl.name);
+        }
         break;
       case ts.SyntaxKind.ComputedPropertyName:
         decl.name.forEachChild(child => this.visit(child));
@@ -1603,7 +1664,8 @@ class Visitor {
 
     if (vname) {
       if (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl) ||
-          ts.isPropertyDeclaration(decl) || ts.isBindingElement(decl)) {
+          ts.isPropertyDeclaration(decl) || ts.isBindingElement(decl) ||
+          ts.isShorthandPropertyAssignment(decl)) {
         this.emitDeclarationCode(decl, vname);
       } else {
         todo(this.sourceRoot, decl, 'Emit variable delaration code');
@@ -1612,11 +1674,22 @@ class Visitor {
 
     if (decl.type) this.visitType(decl.type);
     if (decl.initializer) this.visit(decl.initializer);
+    if (decl.type && decl.initializer &&
+        ts.isObjectLiteralExpression(decl.initializer)) {
+      this.connectObjectLiteralToType(decl.initializer, decl.type);
+    }
     if (vname && decl.kind === ts.SyntaxKind.PropertyDeclaration) {
       const declNode = decl as ts.PropertyDeclaration;
       if (isStaticMember(declNode, declNode.parent)) {
         this.emitFact(vname, FactName.TAG_STATIC, '');
       }
+    }
+    if (vname &&
+        (decl.kind === ts.SyntaxKind.PropertySignature ||
+         decl.kind === ts.SyntaxKind.PropertyDeclaration ||
+         decl.kind === ts.SyntaxKind.PropertyAssignment ||
+         decl.kind === ts.SyntaxKind.ShorthandPropertyAssignment)) {
+      this.emitSubkind(vname, Subkind.FIELD);
     }
     return vname;
   }
@@ -1631,7 +1704,7 @@ class Visitor {
    */
   emitDeclarationCode(
       decl: ts.VariableDeclaration|ts.PropertyAssignment|
-      ts.PropertyDeclaration|ts.BindingElement,
+      ts.PropertyDeclaration|ts.BindingElement|ts.ShorthandPropertyAssignment,
       declVName: VName) {
     const codeParts: MarkedSource[] = [];
     const initializerList = decl.parent;
@@ -1676,7 +1749,7 @@ class Visitor {
         makeMarkedSource({kind: 'IDENTIFIER', preText: decl.name.getText()}));
     codeParts.push(
         makeMarkedSource({kind: 'TYPE', preText: ': ', postText: tyStr}));
-    if (varDecl.initializer) {
+    if ('initializer' in varDecl && varDecl.initializer) {
       let init: ts.Node = varDecl.initializer;
 
       if (ts.isObjectLiteralExpression(init) ||
@@ -1730,6 +1803,55 @@ class Visitor {
       node = next;
     }
     return node;
+  }
+
+  /**
+   * Given an object literal that is used in a place where given type is
+   * expected - adds refs from the literals properties to the type's properties.
+   */
+  connectObjectLiteralToType(
+      literal: ts.ObjectLiteralExpression, typeNode: ts.TypeNode|undefined) {
+    if (typeNode == null) return;
+    const type = this.typeChecker.getTypeFromTypeNode(typeNode);
+    for (const prop of literal.properties) {
+      if (ts.isPropertyAssignment(prop) ||
+          ts.isShorthandPropertyAssignment(prop) ||
+          ts.isMethodDeclaration(prop)) {
+        this.emitPropertyRef(prop.name, type);
+      }
+    }
+  }
+
+  /**
+   * Given object binding pattern like `const {name} = getPerson();` tries to
+   * add refs from binding variables to the propeties of the type. Like `name`
+   * is connected to `Person.name`.
+   */
+  connectObjectBindingPatternToType(binding: ts.ObjectBindingPattern) {
+    const type = this.typeChecker.getTypeAtLocation(binding);
+    for (const prop of binding.elements) {
+      if (prop.propertyName) {
+        this.emitPropertyRef(prop.propertyName, type);
+      } else if (ts.isIdentifier(prop.name)) {
+        this.emitPropertyRef(prop.name, type);
+      }
+    }
+  }
+
+  /**
+   * Helper function to emit `ref` node from a given property (usually of object
+   * literal or destructuring pattern) to the type. Checks whether provided type
+   * contains a property with the same name and will use it for `ref` node.
+   */
+  emitPropertyRef(prop: ts.PropertyName, type: ts.Type) {
+    const propName = this.getPropertyNameStr(prop);
+    if (propName == null) return;
+    const propertyOnType = type.getProperty(propName);
+    if (propertyOnType == null) return;
+    const vname = this.host.getSymbolName(propertyOnType, TSNamespace.VALUE);
+    if (vname == null) return;
+    const anchor = this.newAnchor(prop);
+    this.emitEdge(anchor, EdgeKind.REF_ID, vname);
   }
 
   /**
@@ -1816,7 +1938,8 @@ class Visitor {
         // TODO(b/181591179): Remove this alias and casts
         type AnyDuringTs42Migration = any;
         const overridden: AnyDuringTs42Migration =
-            toArray(type.symbol.members.values() as AnyDuringTs42Migration).find(overriddenCondition as AnyDuringTs42Migration);
+            toArray(type.symbol.members.values() as AnyDuringTs42Migration)
+                .find(overriddenCondition as AnyDuringTs42Migration);
         if (overridden) {
           const base = this.host.getSymbolName(overridden, TSNamespace.VALUE);
           if (base) {
@@ -1901,7 +2024,8 @@ class Visitor {
       this.visitType(decl.type);
     }
 
-    if (decl.typeParameters) this.visitTypeParameters(decl.typeParameters);
+    if (decl.typeParameters)
+      this.visitTypeParameters(vname, decl.typeParameters);
     if (decl.body) {
       this.visit(decl.body);
     } else {
@@ -1967,6 +2091,12 @@ class Visitor {
                 if (ts.isBindingElement(element)) {
                   recurseVisit(element);
                 }
+              }
+              // Handles case like:
+              // funtion doSomething({name}: Person) { ... }
+              // and adds refs from `name` variable to the Person.name field.
+              if (ts.isObjectBindingPattern(param.name)) {
+                this.connectObjectBindingPatternToType(param.name);
               }
               break;
             default:
@@ -2077,7 +2207,8 @@ class Visitor {
 
       this.visitJSDoc(decl, kClass);
     }
-    if (decl.typeParameters) this.visitTypeParameters(decl.typeParameters);
+    if (decl.typeParameters)
+      this.visitTypeParameters(kClass, decl.typeParameters);
     if (decl.heritageClauses) this.visitHeritage(kClass, decl.heritageClauses);
     for (const member of decl.members) {
       this.visit(member);
@@ -2187,6 +2318,17 @@ class Visitor {
     this.emitFact(doc, FactName.TEXT, jsdoc);
   }
 
+  visitAsExpressions(node: ts.AsExpression) {
+    ts.forEachChild(node, (child) => {
+      this.visit(child);
+    });
+    // Handle case like `{name: 'Alice'} as Person` and connect `name` property
+    // to Person.name.
+    if (ts.isObjectLiteralExpression(node.expression)) {
+      this.connectObjectLiteralToType(node.expression, node.type);
+    }
+  }
+
   /**
    * Tags a node as deprecated if its JSDoc marks it as so.
    * TODO(TS 4.0): TS 4.0 exposes a JSDocDeprecatedTag.
@@ -2272,6 +2414,9 @@ class Visitor {
         return;
       case ts.SyntaxKind.ReturnStatement:
         this.visitReturnStatement(node as ts.ReturnStatement)
+        return;
+      case ts.SyntaxKind.AsExpression:
+        this.visitAsExpressions(node as ts.AsExpression);
         return;
       default:
         // Use default recursive processing.

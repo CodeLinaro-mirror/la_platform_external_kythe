@@ -46,7 +46,7 @@ bool CheckVName(const proto::VName& vname) {
 absl::optional<std::string> LoadCommentMetadata(absl::string_view buf_string,
                                                 size_t comment_slash_pos,
                                                 size_t data_start_pos) {
-  google::protobuf::string raw_data;
+  std::string raw_data;
   // Over-reserves--though we expect the comment to be the only thing in the
   // file or the last thing in the file, so this approximation is reasonable.
   raw_data.reserve(buf_string.size() - comment_slash_pos);
@@ -74,9 +74,9 @@ absl::optional<std::string> LoadCommentMetadata(absl::string_view buf_string,
     }
     break;
   }
-  google::protobuf::string decoded;
+  std::string decoded;
   return absl::Base64Unescape(raw_data, &decoded)
-             ? absl::optional<std::string>(std::string(decoded))
+             ? absl::optional<std::string>(decoded)
              : absl::nullopt;
 }
 
@@ -202,7 +202,7 @@ std::unique_ptr<MetadataFile> KytheMetadataSupport::LoadFromJSON(
 
 std::unique_ptr<kythe::MetadataFile> KytheMetadataSupport::ParseFile(
     const std::string& raw_filename, const std::string& filename,
-    absl::string_view buffer) {
+    absl::string_view buffer, absl::string_view target_buffer) {
   auto metadata = LoadFromJSON(raw_filename, buffer);
   if (!metadata) {
     LOG(WARNING) << "Failed loading " << raw_filename;
@@ -218,7 +218,7 @@ void MetadataSupports::UseVNameLookup(VNameLookup lookup) const {
 
 std::unique_ptr<kythe::MetadataFile> MetadataSupports::ParseFile(
     const std::string& filename, absl::string_view buffer,
-    const std::string& search_string) const {
+    const std::string& search_string, absl::string_view target_buffer) const {
   std::string modified_filename = filename;
   absl::optional<std::string> decoded_buffer_storage;
   absl::string_view decoded_buffer = buffer;
@@ -240,8 +240,8 @@ std::unique_ptr<kythe::MetadataFile> MetadataSupports::ParseFile(
     }
   }
   for (const auto& support : supports_) {
-    if (auto metadata =
-            support->ParseFile(filename, modified_filename, decoded_buffer)) {
+    if (auto metadata = support->ParseFile(filename, modified_filename,
+                                           decoded_buffer, target_buffer)) {
       return metadata;
     }
   }

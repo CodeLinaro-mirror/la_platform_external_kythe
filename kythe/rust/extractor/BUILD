@@ -1,5 +1,5 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_clippy", "rust_library")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("@rules_rust//rust:rust.bzl", "rust_binary", "rust_clippy", "rust_library")
 load(":extractor_test.bzl", "rust_extractor_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -10,32 +10,33 @@ rust_library(
         include = ["src/**/*.rs"],
         exclude = ["src/bin/**"],
     ),
-    edition = "2018",
+    edition = "2021",
     deps = [
         "//kythe/proto:analysis_rust_proto",
-        "//kythe/rust/cargo:anyhow",
-        "//kythe/rust/cargo:regex",
-        "//kythe/rust/cargo:serde",
-        "//kythe/rust/cargo:serde_json",
+        "@crate_index//:anyhow",
+        "@crate_index//:regex",
+        "@crate_index//:serde",
+        "@crate_index//:serde_json",
     ],
 )
 
 rust_binary(
     name = "extractor",
     srcs = glob(["src/bin/**/*.rs"]),
-    edition = "2018",
+    edition = "2021",
     deps = [
         ":kythe_rust_extractor",
         "//kythe/proto:analysis_rust_proto",
-        "//kythe/rust/cargo:anyhow",
-        "//kythe/rust/cargo:clap",
-        "//kythe/rust/cargo:hex",
-        "//kythe/rust/cargo:rls_data",
-        "//kythe/rust/cargo:sha2",
-        "//kythe/rust/cargo:tempdir",
-        "//kythe/rust/cargo:zip",
         "//third_party/bazel:extra_actions_base_rust_proto",
-        "@rules_rust//proto/raze:protobuf",
+        "@crate_index//:anyhow",
+        "@crate_index//:clap",
+        "@crate_index//:glob",
+        "@crate_index//:hex",
+        "@crate_index//:protobuf",
+        "@crate_index//:rls-data",
+        "@crate_index//:sha2",
+        "@crate_index//:tempdir",
+        "@crate_index//:zip",
     ],
 )
 
@@ -45,8 +46,8 @@ sh_binary(
     data = [
         ":extractor",
     ] + select({
-        "@platforms//os:linux": ["@rust_linux_x86_64//:rustc_lib"],
-        "@platforms//os:osx": ["@rust_darwin_x86_64//:rustc_lib"],
+        "@platforms//os:linux": ["@rust_linux_x86_64__x86_64-unknown-linux-gnu_tools//:rustc_lib"],
+        "@platforms//os:osx": ["@rust_darwin_x86_64__x86_64-apple-darwin_tools//:rustc_lib"],
     }),
 )
 
@@ -62,15 +63,15 @@ rust_clippy(
 rust_binary(
     name = "extractor_test_binary",
     srcs = ["tests/test.rs"],
-    edition = "2018",
+    edition = "2021",
     rustc_flags = [
         "--test",
     ],
     deps = [
         ":kythe_rust_extractor",
         "//kythe/proto:analysis_rust_proto",
-        "//kythe/rust/cargo:regex",
-        "//kythe/rust/cargo:tempdir",
+        "@crate_index//:regex",
+        "@crate_index//:tempdir",
     ],
 )
 
@@ -83,15 +84,15 @@ rust_binary(
     name = "extractor_integration_test_binary",
     srcs = ["tests/integration_test.rs"],
     data = ["//external:vnames_config"],
-    edition = "2018",
+    edition = "2021",
     deps = [
         "//kythe/proto:analysis_rust_proto",
-        "//kythe/rust/cargo:anyhow",
-        "//kythe/rust/cargo:tempdir",
-        "//kythe/rust/cargo:zip",
         "//third_party/bazel:extra_actions_base_rust_proto",
         "//tools/rust/runfiles",
-        "@rules_rust//proto/raze:protobuf",
+        "@crate_index//:anyhow",
+        "@crate_index//:protobuf",
+        "@crate_index//:tempdir",
+        "@crate_index//:zip",
     ],
 )
 

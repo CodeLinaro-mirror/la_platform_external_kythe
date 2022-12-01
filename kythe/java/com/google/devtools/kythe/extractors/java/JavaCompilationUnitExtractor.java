@@ -123,7 +123,7 @@ public class JavaCompilationUnitExtractor {
     return String.format("!%s_JAR!", location);
   }
 
-  private static final ClassLoader moduleClassLoader = findModuleClassLoader().orElse(null);
+  private static final ClassLoader moduleClassLoader = findModuleClassLoader();
 
   private static final String JAR_SCHEME = "jar";
   private final String jdkJar;
@@ -306,10 +306,13 @@ public class JavaCompilationUnitExtractor {
       unit.addSourceFile(sourceFile);
       sourceFileCorpora.add(inputCorpus.getOrDefault(sourceFile, ""));
     }
-    if (sourceFileCorpora.size() == 1) {
-      // Attribute the source files' corpus to the CompilationUnit if it is unambiguous.
-      unit.getVNameBuilder().setCorpus(Iterables.getOnlyElement(sourceFileCorpora));
-    }
+    // Attribute the source files' corpus to the CompilationUnit if it is unambiguous. Otherwise use
+    // the default corpus.
+    String cuCorpus =
+        sourceFileCorpora.size() == 1
+            ? Iterables.getOnlyElement(sourceFileCorpora)
+            : fileVNames.getDefaultCorpus();
+    unit.getVNameBuilder().setCorpus(cuCorpus);
     unit.setOutputKey(outputPath);
     unit.setWorkingDirectory(stableRoot(rootDirectory, options, requiredInputs));
     unit.addDetails(
@@ -941,20 +944,7 @@ public class JavaCompilationUnitExtractor {
   private static class MaskedClassLoader extends ClassLoader {
     private MaskedClassLoader() {
       // delegate only to the bootclasspath
-      super(getPlatformClassLoader());
-    }
-
-    // TODO(#2451): remove reflection and call ClassLoader.getPlatformClassLoader() directly
-    // once JDK 8 compatibility is no longer required.
-    public static ClassLoader getPlatformClassLoader() {
-      try {
-        // In JDK 9, all platform classes are visible to the platform class loader:
-        // https://docs.oracle.com/javase/9/docs/api/java/lang/ClassLoader.html#getPlatformClassLoader--
-        return (ClassLoader) ClassLoader.class.getMethod("getPlatformClassLoader").invoke(null);
-      } catch (ReflectiveOperationException e) {
-        // In earlier releases, set 'null' as the parent to delegate to the boot class loader.
-        return null;
-      }
+      super(ClassLoader.getPlatformClassLoader());
     }
 
     @Override
@@ -1052,21 +1042,11 @@ public class JavaCompilationUnitExtractor {
                     "Could not get system Java compiler; are you missing the JDK?"));
   }
 
-  private static Optional<ClassLoader> findModuleClassLoader() {
-    // TODO(shahms): Use the proper methods when we can rely on JDK 9.
-    try {
-      Object thisModule =
-          Class.class.getMethod("getModule").invoke(JavaCompilationUnitExtractor.class);
-      thisModule
-          .getClass()
-          .getMethod("addUses", Class.class)
-          .invoke(thisModule, JavaCompiler.class);
-      return Optional.ofNullable(
-          (ClassLoader) thisModule.getClass().getMethod("getClassLoader").invoke(thisModule));
-    } catch (ReflectiveOperationException e) {
-      logger.info("Running on non-modular JDK, fallback compiler unavailable.");
-    }
-    return Optional.empty();
+  private static ClassLoader findModuleClassLoader() {
+    return JavaCompilationUnitExtractor.class
+        .getModule()
+        .addUses(JavaCompiler.class)
+        .getClassLoader();
   }
 
   /** Returns a map from a classfile's {@link URI} to its sourcefile path's basename. */

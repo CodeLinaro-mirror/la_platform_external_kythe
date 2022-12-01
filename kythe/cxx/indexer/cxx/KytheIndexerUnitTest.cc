@@ -277,9 +277,9 @@ TEST(KytheIndexerUnitTest, GraphRecorderEdgeOrdinal) {
   EXPECT_EQ(vname_target.DebugString(), entry.target().DebugString());
 }
 
-static void WriteStringToStackAndBuffer(const google::protobuf::string& value,
+static void WriteStringToStackAndBuffer(const std::string& value,
                                         kythe::BufferStack* stack,
-                                        google::protobuf::string* buffer) {
+                                        std::string* buffer) {
   unsigned char* bytes = stack->WriteToTop(value.size());
   memcpy(bytes, value.data(), value.size());
   if (buffer) {
@@ -289,7 +289,7 @@ static void WriteStringToStackAndBuffer(const google::protobuf::string& value,
 
 TEST(KytheIndexerUnitTest, BufferStackWrite) {
   kythe::BufferStack stack;
-  google::protobuf::string expected, actual;
+  std::string expected, actual;
   {
     google::protobuf::io::StringOutputStream stream(&actual);
     stack.Push(0);
@@ -305,7 +305,7 @@ TEST(KytheIndexerUnitTest, BufferStackWrite) {
 
 TEST(KytheIndexerUnitTest, BufferStackMergeDown) {
   kythe::BufferStack stack;
-  google::protobuf::string actual;
+  std::string actual;
   {
     google::protobuf::io::StringOutputStream stream(&actual);
     stack.Push(0);
@@ -344,7 +344,7 @@ TEST(KytheIndexerUnitTest, BufferStackMergeDown) {
 
 TEST(KytheIndexerUnitTest, BufferStackMergeFailures) {
   kythe::BufferStack stack;
-  google::protobuf::string actual;
+  std::string actual;
   {
     google::protobuf::io::StringOutputStream stream(&actual);
     ASSERT_FALSE(stack.MergeDownIfTooSmall(0, 2048));  // too few on the stack
@@ -380,13 +380,10 @@ TEST(KytheIndexerUnitTest, BufferStackMergeFailures) {
 TEST(KytheIndexerUnitTest, TrivialHappyCase) {
   NullGraphObserver observer;
   LibrarySupports no_supports;
+  IndexerOptions options{};
   std::unique_ptr<clang::FrontendAction> Action =
-      absl::make_unique<IndexerFrontendAction>(
-          &observer, nullptr, []() { return false; },
-          [](IndexerASTVisitor* visitor) {
-            return IndexerWorklist::CreateDefaultWorklist(visitor);
-          },
-          &no_supports);
+      absl::make_unique<IndexerFrontendAction>(&observer, nullptr, &no_supports,
+                                               options);
   ASSERT_TRUE(
       RunToolOnCode(std::move(Action), "int main() {}", "valid_main.cc"));
 }
@@ -442,13 +439,10 @@ class PushPopLintingGraphObserver : public NullGraphObserver {
 TEST(KytheIndexerUnitTest, PushFilePopFileTracking) {
   PushPopLintingGraphObserver Observer;
   LibrarySupports no_supports;
+  IndexerOptions options{};
   std::unique_ptr<clang::FrontendAction> Action =
-      absl::make_unique<IndexerFrontendAction>(
-          &Observer, nullptr, []() { return false; },
-          [](IndexerASTVisitor* visitor) {
-            return IndexerWorklist::CreateDefaultWorklist(visitor);
-          },
-          &no_supports);
+      absl::make_unique<IndexerFrontendAction>(&Observer, nullptr, &no_supports,
+                                               options);
   ASSERT_TRUE(RunToolOnCode(std::move(Action), "int i;", "main.cc"));
   ASSERT_FALSE(Observer.hadUnderrun());
   ASSERT_EQ(0, Observer.getFileNameStackSize());

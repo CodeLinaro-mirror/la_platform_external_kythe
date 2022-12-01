@@ -20,6 +20,7 @@ package info // import "kythe.io/kythe/go/platform/kzip/info"
 import (
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 
 	"bitbucket.org/creachadair/stringset"
@@ -48,9 +49,10 @@ func KzipInfo(f kzip.File, fileSize int64, scanOpts ...kzip.ScanOption) (*apb.Kz
 
 // Accumulator is used to build a summary of a collection of compilation units.
 // Usage:
-//   a := NewAccumulator(fileSize)
-//   a.Accumulate(unit) // call for each compilation unit
-//   info := a.Get()    // get the resulting KzipInfo
+//
+//	a := NewAccumulator(fileSize)
+//	a.Accumulate(unit) // call for each compilation unit
+//	info := a.Get()    // get the resulting KzipInfo
 type Accumulator struct {
 	*apb.KzipInfo
 }
@@ -69,7 +71,12 @@ func NewAccumulator(fileSize int64) *Accumulator {
 // Accumulate should be called for each unit in the kzip so its counts can be
 // recorded.
 func (a *Accumulator) Accumulate(u *kzip.Unit) {
-	srcs := stringset.New(u.Proto.SourceFile...)
+	// Set of canonicalized source file paths in the kzip
+	srcs := stringset.New()
+	for _, p := range u.Proto.SourceFile {
+		srcs.Add(filepath.Clean(p))
+	}
+
 	cuLang := u.Proto.GetVName().GetLanguage()
 	if cuLang == "" {
 		msg := fmt.Sprintf("CU does not specify a language %v", u.Proto.GetVName())
@@ -78,10 +85,11 @@ func (a *Accumulator) Accumulate(u *kzip.Unit) {
 	}
 
 	var srcCorpora stringset.Set
+	var absPaths stringset.Set
 	srcsWithRI := stringset.New()
 	for _, ri := range u.Proto.RequiredInput {
 		if strings.HasPrefix(ri.GetVName().GetPath(), "/") && !strings.HasPrefix(ri.GetVName().GetPath(), "/kythe_builtins/") {
-			a.KzipInfo.AbsolutePaths = append(a.KzipInfo.AbsolutePaths, ri.GetVName().GetPath())
+			absPaths.Add(ri.GetVName().GetPath())
 		}
 
 		riCorpus := requiredInputCorpus(u, ri)
@@ -92,10 +100,15 @@ func (a *Accumulator) Accumulate(u *kzip.Unit) {
 			return
 		}
 		requiredInputInfo(riCorpus, cuLang, a.KzipInfo).Count++
-		if srcs.Contains(ri.Info.Path) {
+		// canonicalize required_input path before checking against source
+		// files. In some cases, required_input paths may be non-canonical due
+		// to compiler idiosyncrasies (ahem c++), but it's ok to canonicalize
+		// for the purposes of this validation check.
+		normalizedInputPath := filepath.Clean(ri.Info.Path)
+		if srcs.Contains(normalizedInputPath) {
 			sourceInfo(riCorpus, cuLang, a.KzipInfo).Count++
 			srcCorpora.Add(riCorpus)
-			srcsWithRI.Add(ri.Info.Path)
+			srcsWithRI.Add(normalizedInputPath)
 		}
 	}
 	srcsWithoutRI := srcs.Diff(srcsWithRI)
@@ -107,6 +120,8 @@ func (a *Accumulator) Accumulate(u *kzip.Unit) {
 		// This is a warning for now, but may become an error.
 		log.Printf("Multiple corpora in unit. unit vname={%v}; src corpora=%v; srcs=%v", u.Proto.GetVName(), srcCorpora, u.Proto.SourceFile)
 	}
+
+	a.KzipInfo.AbsolutePaths = absPaths.Elements()
 }
 
 // Get returns the final KzipInfo after info from each unit in the kzip has been
@@ -172,7 +187,7 @@ func MergeKzipInfo(infos []*apb.KzipInfo) *apb.KzipInfo {
 		}
 		kzipInfo.CriticalKzipErrors = append(kzipInfo.GetCriticalKzipErrors(), i.GetCriticalKzipErrors()...)
 		kzipInfo.Size += i.Size
-		kzipInfo.AbsolutePaths = append(kzipInfo.AbsolutePaths, i.AbsolutePaths...)
+		kzipInfo.AbsolutePaths = stringset.New(kzipInfo.AbsolutePaths...).Union(stringset.New(i.AbsolutePaths...)).Elements()
 	}
 	return kzipInfo
 }
