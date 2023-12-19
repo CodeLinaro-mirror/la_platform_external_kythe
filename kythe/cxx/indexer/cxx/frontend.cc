@@ -85,7 +85,7 @@ constexpr char kBuildDetailsURI[] = "kythe.io/proto/kythe.proto.BuildDetails";
 /// \return the input name stripped of its prefix if it's silent; an empty
 /// string otherwise.
 llvm::StringRef strip_silent_input_prefix(llvm::StringRef argument) {
-  if (absl::GetFlag(FLAGS_test_claim) && argument.startswith(kSilentPrefix)) {
+  if (absl::GetFlag(FLAGS_test_claim) && argument.starts_with(kSilentPrefix)) {
     return argument.drop_front(::strlen(kSilentPrefix));
   }
   return {};
@@ -231,7 +231,7 @@ Examples:)");
 bool IndexerContext::HasIndexArguments() {
   for (const auto& arg : args_) {
     auto path = llvm::StringRef(arg);
-    if (path.endswith(".kindex") || path.endswith(".kzip")) {
+    if (path.ends_with(".kindex") || path.ends_with(".kzip")) {
       CHECK_EQ("-", absl::GetFlag(FLAGS_i))
           << "No other input is allowed when reading from an index file or an "
           << "index pack.";
@@ -248,7 +248,7 @@ void IndexerContext::LoadDataFromIndex(const std::string& file_or_cu,
   if (name.empty()) {
     name = file_or_cu;
   }
-  if (llvm::StringRef(file_or_cu).endswith(".kzip")) {
+  if (llvm::StringRef(file_or_cu).ends_with(".kzip")) {
     DecodeKZipFile(name, silent, visit);
   } else {
     IndexerJob job;
