@@ -166,9 +166,6 @@ cc_binary_host {
         "libclang-cpp_host",
         "libziparchive",
     ],
-    header_libs: [
-        "libabsl_headers",
-    ],
     static_libs: [
         "kythe_cxx_glog",
         "kythe_cxx_common",
@@ -196,9 +193,6 @@ cc_binary_host {
         "kythe/cxx/extractor/proto/proto_extractor.cc",
         "kythe/cxx/extractor/proto/proto_extractor_main.cc",
         "kythe/cxx/indexer/proto/search_path.cc",
-    ],
-    header_libs: [
-        "libabsl_headers",
     ],
     static_libs: [
         "kythe_cxx_glog",
@@ -231,9 +225,6 @@ cc_binary_host {
     ],
     srcs: [
         "kythe/cxx/tools/proto_metadata_plugin.cc",
-    ],
-    header_libs: [
-        "libabsl_headers",
     ],
     static_libs: [
         "kythe_cxx_glog",
