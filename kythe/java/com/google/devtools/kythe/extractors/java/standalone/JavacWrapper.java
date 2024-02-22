@@ -37,8 +37,12 @@ import java.util.List;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardLocation;
 
-/** A class that wraps javac to extract compilation information and write it to an index file. */
-public class Javac9Wrapper extends AbstractJavacWrapper {
+/**
+ * A class that wraps javac to extract compilation information and write it to an index file.
+ *
+ * <p>This class works for Java 9 and later.
+ */
+public class JavacWrapper extends AbstractJavacWrapper {
   @Override
   protected Collection<CompilationDescription> processCompilation(
       String[] arguments, JavaCompilationUnitExtractor javaCompilationUnitExtractor)
@@ -48,27 +52,7 @@ public class Javac9Wrapper extends AbstractJavacWrapper {
 
     JavacFileManager fileManager = new JavacFileManager(context, true, null);
     Arguments args = Arguments.instance(context);
-    // JDK changed the signature of Arguments.init method, support both
-    try {
-      try {
-        // JDK15+: the signature is
-        //     init(String, Iterable<String> args);
-        Arguments.class.getMethod("init", String.class, Iterable.class)
-          .invoke(args, "kythe_javac", (Object) Arrays.asList(arguments));
-      } catch (NoSuchMethodException nsme) {
-        // pre-JDK15:
-        //     init(String, String...);
-        Arguments.class.getMethod("init", String.class,String[].class)
-          .invoke(args, "kythe_javac", (Object)arguments);
-      }
-    } catch (NoSuchMethodException ns2) {
-      System.err.printf("Cannot locate com.sun.tools.javac.main.Arguments.init method, JDK version %s\n", System.getProperty("java.version"));
-      System.exit(2);
-    } catch (InvocationTargetException|IllegalAccessException ex) {
-      System.err.printf("Cannot call com.sun.tools.javac.main.Arguments.init (JDK version %s):\n%s\n", System.getProperty("java.version"), ex);
-      System.exit(2);
-    }
-
+    shims.initializeArguments(args, arguments);
     fileManager.handleOptions(args.getDeferredFileManagerOptions());
     Options options = Options.instance(context);
 
@@ -173,6 +157,6 @@ public class Javac9Wrapper extends AbstractJavacWrapper {
   }
 
   public static void main(String[] args) {
-    new Javac9Wrapper().process(args);
+    new JavacWrapper().process(args);
   }
 }
