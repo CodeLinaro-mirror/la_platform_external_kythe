@@ -1,1 +1,1 @@
-Main-Class: com.google.devtools.kythe.extractors.java.standalone.Javac9Wrapper
+Main-Class: com.google.devtools.kythe.extractors.java.standalone.JavacWrapper

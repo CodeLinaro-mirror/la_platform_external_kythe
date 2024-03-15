@@ -31,7 +31,6 @@ import com.google.devtools.kythe.extractors.shared.IndexInfoUtils;
 import com.google.devtools.kythe.proto.Analysis.CompilationUnit;
 import com.google.devtools.kythe.proto.Analysis.FileData;
 import com.google.devtools.kythe.util.JsonUtil;
-import com.sun.tools.javac.main.CommandLine;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -66,6 +65,7 @@ import java.util.Optional;
  */
 public abstract class AbstractJavacWrapper {
   private static final Logger logger = Logger.getLogger(AbstractJavacWrapper.class.getName());
+  protected static final JdkCompatibilityShims shims = JdkCompatibilityShims.loadBest().get();
 
   protected abstract Collection<CompilationDescription> processCompilation(
       String[] arguments, JavaCompilationUnitExtractor javaCompilationUnitExtractor)
@@ -150,26 +150,7 @@ public abstract class AbstractJavacWrapper {
 
   private static String[] getCleanedUpArguments(String[] args) throws IOException {
     // Expand all @file arguments
-    // JDK changed the signature of the CommandLine.parse method in JDK15,
-    // support both versions
-    List<String> expandedArgs = null;
-    try {
-      try {
-        // JDK15+: the signature is
-        //     List<String> parse(List<String> args);
-        expandedArgs = (List<String>)CommandLine.class.getMethod("parse", List.class).invoke(null, (Object)Arrays.asList(args));
-      } catch (NoSuchMethodException nsme) {
-        // pre-JDK15:
-        //     String[] parse(String[]);
-        expandedArgs = Arrays.asList((String[])CommandLine.class.getMethod("parse", String[].class).invoke(null, (Object)args));
-      }
-    } catch (NoSuchMethodException ns2) {
-      System.err.printf("Cannot locate com.sun.tools.javac.main.CommandLine.parse method, JDK version %s\n", System.getProperty("java.version"));
-      System.exit(2);
-    } catch (InvocationTargetException|IllegalAccessException ex) {
-      System.err.printf("Cannot call com.sun.tools.javac.main.CommandLine.parse (JDK version %s):\n%s\n", System.getProperty("java.version"), ex);
-      System.exit(2);
-    }
+    List<String> expandedArgs = shims.parseCompilerArguments(args);
 
     // We skip some arguments that would normally be passed to javac:
     // -J, these are flags to the java environment running javac.

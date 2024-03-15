@@ -29,7 +29,16 @@ java_library_host {
     name: "javac_extractor",
     srcs: [
         "kythe/java/com/google/devtools/kythe/extractors/java/standalone/AbstractJavacWrapper.java",
-        "kythe/java/com/google/devtools/kythe/extractors/java/standalone/Javac9Wrapper.java",
+        "kythe/java/com/google/devtools/kythe/extractors/java/standalone/JavacWrapper.java",
+        "kythe/java/com/google/devtools/kythe/extractors/java/standalone/JdkCompatibilityShims.java",
+        // Currently it is not possible to pick a specific JDK version implementation of
+        // JdkCompatibilityShim, so only use the fallback (reflective) one. Otherwise, if it becomes
+        // possible, either through bp file configuration, or once JDK 21 is used consistently, we
+        // could also select one the options below.
+        "kythe/java/com/google/devtools/kythe/extractors/java/standalone/ReflectiveJdkCompatibilityShims.java",
+        // "kythe/java/com/google/devtools/kythe/extractors/java/standalone/9/JdkCompatibilityShimsImpl.java",
+        // "kythe/java/com/google/devtools/kythe/extractors/java/standalone/15/JdkCompatibilityShimsImpl.java",
+        // "kythe/java/com/google/devtools/kythe/extractors/java/standalone/21/JdkCompatibilityShimsImpl.java",
         "kythe/java/com/google/devtools/kythe/extractors/java/*.java",
         "kythe/java/com/google/devtools/kythe/extractors/shared/*.java",
         "kythe/java/com/google/devtools/kythe/platform/kzip/*.java",
@@ -38,6 +47,7 @@ java_library_host {
         "kythe/java/com/google/devtools/kythe/platform/shared/CompilationUnits.java",
         "kythe/java/com/google/devtools/kythe/util/DeleteRecursively.java",
         "kythe/java/com/google/devtools/kythe/util/JsonUtil.java",
+        "kythe/java/com/google/devtools/kythe/util/OrderedCompatibilityService.java",
         ":kythe_protos",
         "kythe/proto/java.proto",
     ],
@@ -48,7 +58,10 @@ java_library_host {
         "--add-exports jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED",
         "--add-exports jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",
         "--add-exports jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED",
+        "--add-exports=jdk.internal.opt/jdk.internal.opt=ALL-UNNAMED",
         "--add-modules java.compiler",
+        "--add-modules jdk.internal.opt",
     ],
     manifest: "javac_extractor_manifest.txt",
     proto: {
@@ -65,6 +78,10 @@ java_library_host {
         "libprotobuf-java-util-full",
         "guava",
         "jsr305",
+        "auto_service_annotations",
+    ],
+    plugins: [
+        "auto_service_plugin",
     ],
     java_version: "1.9",
 }
