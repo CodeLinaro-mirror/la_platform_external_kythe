@@ -373,10 +373,10 @@ class ExtractorPPCallbacks : public clang::PPCallbacks {
 
   /// \brief Records the content of `file` (with spelled path `path`)
   /// if it has not already been recorded.
-  void AddFile(const clang::FileEntry* file, const std::string& path);
+  void AddFile(clang::FileEntryRef file, const std::string& path);
 
   /// \brief Records the content of `file` if it has not already been recorded.
-  std::string AddFile(const clang::FileEntry* file, llvm::StringRef file_name,
+  std::string AddFile(clang::FileEntryRef file, llvm::StringRef file_name,
                       llvm::StringRef search_path,
                       llvm::StringRef relative_path);
 
@@ -483,7 +483,7 @@ class ExtractorPPCallbacks : public clang::PPCallbacks {
 
  private:
   /// \brief Returns the main file for this compile action.
-  const clang::FileEntry* GetMainFile();
+  clang::OptionalFileEntryRef GetMainFile();
 
   /// \brief Return the active `RunningHash` for preprocessor events.
   RunningHash* history();
@@ -499,7 +499,7 @@ class ExtractorPPCallbacks : public clang::PPCallbacks {
   /// \param file The file entry of the main source file.
   /// \param path The path as known to Clang.
   /// \return The path that should be used to generate VNames.
-  std::string FixStdinPath(const clang::FileEntry* file,
+  std::string FixStdinPath(clang::FileEntryRef file,
                            const std::string& path);
 
   /// The `SourceManager` used for the compilation.
@@ -622,11 +622,11 @@ PreprocessorTranscript ExtractorPPCallbacks::PopFile() {
 }
 
 void ExtractorPPCallbacks::EndOfMainFile() {
-  AddFile(GetMainFile(), std::string(GetMainFile()->getName()));
+  AddFile(*GetMainFile(), std::string(GetMainFile()->getName()));
   *main_source_file_transcript_ = PopFile();
 }
 
-std::string ExtractorPPCallbacks::FixStdinPath(const clang::FileEntry* file,
+std::string ExtractorPPCallbacks::FixStdinPath(clang::FileEntryRef file,
                                                const std::string& in_path) {
   if (in_path == "-" || in_path == "<stdin>") {
     if (main_source_file_stdin_alternate_->empty()) {
@@ -642,7 +642,7 @@ std::string ExtractorPPCallbacks::FixStdinPath(const clang::FileEntry* file,
   return in_path;
 }
 
-void ExtractorPPCallbacks::AddFile(const clang::FileEntry* file,
+void ExtractorPPCallbacks::AddFile(clang::FileEntryRef file,
                                    const std::string& in_path) {
   std::string path = FixStdinPath(file, in_path);
   auto contents = source_files_->insert({in_path, SourceFile{""}});
@@ -712,11 +712,11 @@ void ExtractorPPCallbacks::RecordSpecificLocation(clang::SourceLocation loc) {
       source_manager_->getFileID(loc) != preprocessor_->getPredefinesFileID()) {
     history()->Update(source_manager_->getFileOffset(loc));
     const auto filename_ref = source_manager_->getFilename(loc);
-    const auto* file_ref =
-        source_manager_->getFileEntryForID(source_manager_->getFileID(loc));
+    const clang::OptionalFileEntryRef file_ref =
+        source_manager_->getFileEntryRefForID(source_manager_->getFileID(loc));
     if (file_ref) {
       auto vname = index_writer_->VNameForPath(index_writer_->RelativizePath(
-          FixStdinPath(file_ref, std::string(filename_ref))));
+          FixStdinPath(*file_ref, std::string(filename_ref))));
       history()->Update(ToStringRef(vname.signature()));
       history()->Update(ToStringRef(vname.corpus()));
       history()->Update(ToStringRef(vname.root()));
@@ -870,11 +870,11 @@ void ExtractorPPCallbacks::InclusionDirective(
     return;
   }
   last_inclusion_directive_path_ =
-      AddFile(&File->getFileEntry(), FileName, SearchPath, RelativePath);
+      AddFile(*File, FileName, SearchPath, RelativePath);
   last_inclusion_offset_ = source_manager_->getFileOffset(HashLoc);
 }
 
-std::string ExtractorPPCallbacks::AddFile(const clang::FileEntry* file,
+std::string ExtractorPPCallbacks::AddFile(clang::FileEntryRef file,
                                           llvm::StringRef file_name,
                                           llvm::StringRef search_path,
                                           llvm::StringRef relative_path) {
@@ -919,8 +919,9 @@ std::string ExtractorPPCallbacks::AddFile(const clang::FileEntry* file,
   return out_name_string;
 }
 
-const clang::FileEntry* ExtractorPPCallbacks::GetMainFile() {
-  return source_manager_->getFileEntryForID(source_manager_->getMainFileID());
+clang::OptionalFileEntryRef ExtractorPPCallbacks::GetMainFile() {
+  return source_manager_->getFileEntryRefForID(
+      source_manager_->getMainFileID());
 }
 
 RunningHash* ExtractorPPCallbacks::history() {
@@ -942,9 +943,9 @@ void ExtractorPPCallbacks::HandleKytheMetadataPragma(
   llvm::SmallString<1024> search_path;
   llvm::SmallString<1024> relative_path;
   llvm::SmallString<1024> filename;
-  if (const clang::FileEntry* file = LookupFileForIncludePragma(
+  if (clang::OptionalFileEntryRef file = LookupFileForIncludePragma(
           &preprocessor, &search_path, &relative_path, &filename)) {
-    AddFile(file, filename, search_path, relative_path);
+    AddFile(*file, file->getNameAsRequested(), search_path, relative_path);
   }
 }
 

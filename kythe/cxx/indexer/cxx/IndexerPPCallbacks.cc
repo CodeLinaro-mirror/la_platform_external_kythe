@@ -139,9 +139,9 @@ void IndexerPPCallbacks::MacroDefined(const clang::Token& Token,
   const clang::MacroInfo& Info = *Macro->getMacroInfo();
   clang::FileID MacroFileID =
       Observer.getSourceManager()->getFileID(Info.getDefinitionLoc());
-  const clang::FileEntry* MacroFileEntry =
-      Observer.getSourceManager()->getFileEntryForID(MacroFileID);
-  if (MacroFileEntry == nullptr) {
+  clang::FileEntryRef MacroFileEntry =
+      Observer.getSourceManager()->getFileEntryRefForID(MacroFileID);
+  if (!MacroFileEntry) {
     // This is a builtin macro. Ignore it.
     return;
   }
@@ -247,8 +247,7 @@ void IndexerPPCallbacks::InclusionDirective(
   // was transformed to a module import.
   if (FileRef) {
     Observer.recordIncludesRange(
-        RangeInCurrentContext(FilenameRange.getAsRange()),
-        &FileRef->getFileEntry());
+        RangeInCurrentContext(FilenameRange.getAsRange()), *FileRef);
   }
   LastInclusionHash = HashLocation;
 }
@@ -335,7 +334,7 @@ void IndexerPPCallbacks::HandleKytheMetadataPragma(
   llvm::SmallString<1024> search_path;
   llvm::SmallString<1024> relative_path;
   llvm::SmallString<1024> filename;
-  const auto* file = cxx_extractor::LookupFileForIncludePragma(
+  clang::OptionalFileEntryRef file = cxx_extractor::LookupFileForIncludePragma(
       &preprocessor, &search_path, &relative_path, &filename);
   if (!file) {
     absl::FPrintF(stderr, "Missing metadata file: %s\n",
@@ -344,14 +343,14 @@ void IndexerPPCallbacks::HandleKytheMetadataPragma(
   }
   clang::FileID pragma_file_id =
       Observer.getSourceManager()->getFileID(FirstToken.getLocation());
-  const auto* target =
-      Observer.getSourceManager()->getFileEntryForID(pragma_file_id);
-  if (target == nullptr) {
+  const clang::OptionalFileEntryRef target =
+      Observer.getSourceManager()->getFileEntryRefForID(pragma_file_id);
+  if (!target) {
     LOG(WARNING) << "Missing target file entry for kythe_metadata";
     return;
   }
   if (!pragma_file_id.isInvalid()) {
-    Observer.applyMetadataFile(pragma_file_id, file, "", target);
+    Observer.applyMetadataFile(pragma_file_id, file, "", *target);
   } else {
     absl::FPrintF(stderr, "Metadata pragma was in an impossible place\n");
   }
@@ -376,14 +375,14 @@ void IndexerPPCallbacks::HandleKytheInlineMetadataPragma(
     LOG(WARNING) << "Invalid file ID for kythe_inline_metadata";
     return;
   }
-  const clang::FileEntry* pragma_file_entry =
-      Observer.getSourceManager()->getFileEntryForID(pragma_file_id);
-  if (pragma_file_entry == nullptr) {
+  const clang::OptionalFileEntryRef pragma_file_entry =
+      Observer.getSourceManager()->getFileEntryRefForID(pragma_file_id);
+  if (!pragma_file_entry) {
     LOG(WARNING) << "Missing file entry for kythe_inline_metadata";
     return;
   }
-  Observer.applyMetadataFile(pragma_file_id, pragma_file_entry, search_string,
-                             pragma_file_entry);
+  Observer.applyMetadataFile(pragma_file_id, *pragma_file_entry, search_string,
+                             *pragma_file_entry);
 }
 
 }  // namespace kythe
