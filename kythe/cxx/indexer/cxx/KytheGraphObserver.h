@@ -179,9 +179,9 @@ class KytheGraphObserver : public GraphObserver {
     return &vname_token_;
   }
 
-  void applyMetadataFile(clang::FileID ID, const clang::FileEntry* file,
+  void applyMetadataFile(clang::FileID ID, const clang::FileEntryRef file,
                          const std::string& search_string,
-                         const clang::FileEntry* target_file) override;
+                         const clang::FileEntryRef target_file) override;
   void StopDeferringNodes() { deferring_nodes_ = false; }
   void DropRedundantWraiths() { drop_redundant_wraiths_ = true; }
   void Delimit() override { recorder_->PushEntryGroup(); }
@@ -369,7 +369,7 @@ class KytheGraphObserver : public GraphObserver {
                             const NodeId& macro_id) override;
 
   void recordIncludesRange(const Range& source_range,
-                           const clang::FileEntry* file) override;
+                           const clang::FileEntryRef file) override;
 
   void recordBoundQueryRange(const Range& source_range,
                              const NodeId& macro_id) override;
@@ -499,7 +499,7 @@ class KytheGraphObserver : public GraphObserver {
                                          llvm::raw_ostream& Ostream);
 
   VNameRef VNameRefFromNodeId(const GraphObserver::NodeId& node_id) const;
-  kythe::proto::VName VNameFromFileEntry(const clang::FileEntry* file_entry);
+  kythe::proto::VName VNameFromFileEntry(const clang::FileEntryRef file_entry);
   kythe::proto::VName ClaimableVNameFromFileID(const clang::FileID& file_id);
   kythe::proto::VName VNameFromRange(const GraphObserver::Range& range);
   kythe::proto::VName StampedVNameFromRange(const GraphObserver::Range& range,
@@ -634,7 +634,7 @@ class KytheGraphObserver : public GraphObserver {
   KytheClaimClient* client_;
   /// Contains the `FileEntry`s for files we have already recorded.
   /// These pointers are not owned by the `KytheGraphObserver`.
-  std::unordered_set<const clang::FileEntry*> recorded_files_;
+  std::unordered_set<const clang::FileEntryRef> recorded_files_;
   /// The set of anchor nodes with locations that have not yet been recorded.
   /// This allows the `GraphObserver` to limit the amount of redundant range
   /// information it emits should an anchor be the source of multiple edges.
