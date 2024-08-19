@@ -15,6 +15,7 @@ MANIFEST-*
 .vscode
 .clangd
 .cache
+*.swp
 
 # Binary files
 *.class
