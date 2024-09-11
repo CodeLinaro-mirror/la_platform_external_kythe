@@ -33,10 +33,11 @@ func (s *StringList) Set(value string) error {
 }
 
 var (
-	kotlinSrc  StringList
-	kotlinCp   StringList
-	kotlinArgs string
-	kotlinOut  string
+	kotlinSrc       StringList
+	kotlinCommonSrc StringList
+	kotlinCp        StringList
+	kotlinArgs      string
+	kotlinOut       string
 
 	corpus string
 	vnames string // TODO
@@ -50,6 +51,7 @@ var (
 func init() {
 	flag.StringVar(&outputKzip, "o", "", "Path to the output kzip file")
 	flag.Var(&kotlinSrc, "srcs", "Path to .kt files passed to kotlinc. Can be passed multiple times. @ files are supported.")
+	flag.Var(&kotlinCommonSrc, "common_srcs", "Path to platform agnostic .kt files passed to kotlinc. Can be passed multiple times. @ files are supported.")
 	flag.Var(&kotlinCp, "cp", "Path to .jar files on the classpath for kotlinc. Can be passed multiple times. @ files are supported.")
 	flag.StringVar(&kotlinArgs, "args", "", "Additional args passed to kotlinc.")
 	flag.StringVar(&kotlinOut, "kotlin_out", "", "Output of kotlinc. If multiple outputs are created, pass the first one to the extractor.")
@@ -77,6 +79,10 @@ func initGenerator() (*compilationUnitGenerator, error) {
 	if err != nil {
 		return nil, err
 	}
+	commonSrcs, err := maybeParseRsp(kotlinCommonSrc)
+	if err != nil {
+		return nil, err
+	}
 	cp, err := maybeParseRsp(kotlinCp)
 	if err != nil {
 		return nil, err
@@ -84,6 +90,7 @@ func initGenerator() (*compilationUnitGenerator, error) {
 	return &compilationUnitGenerator{
 		inputs: compilationUnitInputs{
 			srcs:           srcs,
+			commonSrcs:     commonSrcs,
 			classpath:      cp,
 			additionalArgs: strings.Split(kotlinArgs, " "),
 			output:         kotlinOut,
