@@ -263,5 +263,19 @@ cc_binary_host {
     },
 }
 
+// kotlin extractor
+blueprint_go_binary {
+    name: "kotlinc_extractor",
+    deps: [
+        "kythe-go-platform-kzip",
+        "kythe-proto-analysis_go_proto",
+    ],
+    srcs: [
+        "kythe/kotlin/extractors/compilation_unit.go",
+        "kythe/kotlin/extractors/main.go",
+        "kythe/kotlin/extractors/util.go",
+    ],
+}
+
 // Go extractor
 build = ["Android.gen.bp"]
