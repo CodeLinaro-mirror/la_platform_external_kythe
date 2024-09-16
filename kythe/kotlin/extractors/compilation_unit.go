@@ -26,6 +26,7 @@ import (
 
 type compilationUnitInputs struct {
 	srcs           StringList
+	commonSrcs     StringList
 	classpath      StringList
 	additionalArgs StringList
 
@@ -75,11 +76,12 @@ func (c *compilationUnitGenerator) writeCompilationUnit(kzipFile *kzip.Writer) e
 		},
 		Argument: c.getKotlincArgs(),
 	}
-	// Add the source .kt files to the unit.
-	if err := c.addRequiredInputs(cu, kzipFile, c.inputs.srcs); err != nil {
+	// Add the source .kt files (platform specific + common) to the unit.
+	allSrcs := append(c.inputs.srcs, c.inputs.commonSrcs...)
+	if err := c.addRequiredInputs(cu, kzipFile, allSrcs); err != nil {
 		return err
 	}
-	cu.SourceFile = append(cu.SourceFile, c.inputs.srcs...)
+	cu.SourceFile = append(cu.SourceFile, allSrcs...)
 
 	// Add the classpath .jars as required files. Skip addition to `SourceFile` since this is external.
 	if err := c.addRequiredInputs(cu, kzipFile, c.inputs.classpath); err != nil {
@@ -133,7 +135,12 @@ func (c *compilationUnitGenerator) getKotlincArgs() []string {
 	if len(c.inputs.classpath) > 0 {
 		ret = append(ret, "-cp", strings.Join(c.inputs.classpath, ":"))
 	}
+	// Add the common srcs with "-Xcommon-sources"
+	for _, commonSrc := range c.inputs.commonSrcs {
+		ret = append(ret, "-Xcommon-sources", commonSrc)
+	}
 	// add all the source .kt files
 	ret = append(ret, c.inputs.srcs...)
+	ret = append(ret, c.inputs.commonSrcs...)
 	return ret
 }
