@@ -118,6 +118,7 @@ func (c *compilationUnitGenerator) addRequiredInputs(cu *agp.CompilationUnit, kz
 			},
 			VName: &sgp.VName{
 				Path: in,
+				Corpus: c.inputs.corpus,
 			},
 		})
 	}
