@@ -40,12 +40,11 @@ var (
 	kotlinOut       string
 
 	corpus string
-	vnames string // TODO
+	vnames string
 
 	outputKzip string
 )
 
-// TODO (spandandas): Add vnames
 // TODO (spandandas): Add env
 // TODO (spandandas): Add support for kotlin-home to prevent issues caused by version skew between kotlinc-jvm used by android build and kotlin extractors.
 func init() {
@@ -56,6 +55,7 @@ func init() {
 	flag.StringVar(&kotlinArgs, "args", "", "Additional args passed to kotlinc.")
 	flag.StringVar(&kotlinOut, "kotlin_out", "", "Output of kotlinc. If multiple outputs are created, pass the first one to the extractor.")
 	flag.StringVar(&corpus, "corpus", "", "Corpus label to assign")
+	flag.StringVar(&vnames, "vnames", "", "Path to vnames.json for custom vname mappings")
 }
 
 // Creates a kzip file in the format expected by the internal Google3 kotlin indexer
@@ -87,7 +87,8 @@ func initGenerator() (*compilationUnitGenerator, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &compilationUnitGenerator{
+
+	generator := &compilationUnitGenerator{
 		inputs: compilationUnitInputs{
 			srcs:           srcs,
 			commonSrcs:     commonSrcs,
@@ -96,5 +97,15 @@ func initGenerator() (*compilationUnitGenerator, error) {
 			output:         kotlinOut,
 			corpus:         corpus,
 		},
-	}, nil
+	}
+
+	if vnames != "" {
+		vnameMappings, err := maybeParseVNames(vnames)
+		if err != nil {
+			return nil, err
+		}
+		generator.vnameMappings = vnameMappings
+	}
+
+	return generator, nil
 }
