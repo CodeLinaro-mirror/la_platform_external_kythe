@@ -15,6 +15,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -82,4 +83,18 @@ func readRspFile(r io.Reader) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+func maybeParseVNames(filePath string) ([]VNameMapping, error) {
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read vnames file: %w", err)
+	}
+
+	var mappings []VNameMapping
+	if err := json.Unmarshal(data, &mappings); err != nil {
+		return nil, fmt.Errorf("failed to parse vnames JSON: %w", err)
+	}
+
+	return mappings, nil
 }

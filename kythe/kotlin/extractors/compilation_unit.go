@@ -16,7 +16,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"kythe.io/kythe/go/platform/kzip"
@@ -35,9 +37,15 @@ type compilationUnitInputs struct {
 	corpus string
 }
 
+type VNameMapping struct {
+	Pattern string    `json:"pattern"`
+	VName   sgp.VName `json:"vname"`
+}
+
 // compilationUnitGenerator creates the .kzip file from compilationUnitInputs
 type compilationUnitGenerator struct {
-	inputs compilationUnitInputs
+	inputs        compilationUnitInputs
+	vnameMappings []VNameMapping
 }
 
 func (c *compilationUnitGenerator) Create(outputKzip string) (err error) {
@@ -111,18 +119,47 @@ func (c *compilationUnitGenerator) addRequiredInputs(cu *agp.CompilationUnit, kz
 		if err != nil {
 			return err
 		}
+		mappedVName := c.getMappedVName(in)
 		cu.RequiredInput = append(cu.RequiredInput, &agp.CompilationUnit_FileInput{
 			Info: &agp.FileInfo{
 				Path:   in,
 				Digest: digest,
 			},
-			VName: &sgp.VName{
-				Path: in,
-				Corpus: c.inputs.corpus,
-			},
+			VName: mappedVName,
 		})
 	}
 	return nil
+}
+
+func (c *compilationUnitGenerator) getMappedVName(filePath string) *sgp.VName {
+	for _, mapping := range c.vnameMappings {
+		re, err := regexp.Compile(mapping.Pattern)
+		if err != nil {
+			errors.New("Invalid regex in vnames.json")
+		}
+		matches := re.FindStringSubmatch(filePath)
+		if matches != nil {
+			vname := mapping.VName
+
+			// Replace placeholders like @1@, @2@, etc., with the corresponding capture groups
+			// matches[0] is the full match, so start from index 1
+			for i, match := range matches[1:] {
+				placeholder := fmt.Sprintf("@%d@", i+1)
+				vname.Path = strings.ReplaceAll(vname.Path, placeholder, match)
+			}
+
+			// Use the default corpus if none is specified in vname
+			if vname.Corpus == "" {
+				vname.Corpus = c.inputs.corpus
+			}
+
+			return &vname
+		}
+	}
+	return &sgp.VName{
+		Path:   filePath,
+		Corpus: c.inputs.corpus,
+	}
 }
 
 // Returns the args passed to kotlinc. This includes the source files and jars on classpath.
