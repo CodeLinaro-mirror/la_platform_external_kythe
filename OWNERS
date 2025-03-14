@@ -1,8 +1,6 @@
-asmundak@google.com
 ccross@google.com
 dwillemsen@google.com
 jungjw@google.com
-patricearruda@google.com
 
 include platform/build/soong:/OWNERS
-include toolchain/llvm_android:master:/OWNERS
+include toolchain/llvm_android:main:/OWNERS
